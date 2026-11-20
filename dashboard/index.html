@@ -65,14 +65,16 @@
           <tr>
             <th class="num sortable" data-sort="rank">Rank <span class="arrow"></span></th>
             <th class="sortable" data-sort="name">Protocol <span class="arrow"></span></th>
-            <th>Chains</th>
+            <th class="chains-h">Chains</th>
             <th class="num sortable" data-sort="tvl_usd">TVL <span class="arrow"></span></th>
             <th class="num sortable" data-sort="change_7d">7-day <span class="arrow"></span></th>
             <th class="num sortable" data-sort="age_days">No token for <span class="arrow"></span></th>
             <th class="num sortable" data-sort="implied_value_usd">Implied value <span class="arrow"></span></th>
             <th class="num sortable" data-sort="band_lo">p10 – p90 <span class="arrow"></span></th>
-            <th class="num sortable" data-sort="breakeven_drop_pct">Break-even drop <span class="arrow"></span></th>
+            <th class="num sortable" data-sort="drop_max_1000" title="the drop share at which a $1000 position stops paying for itself">Drop at $1k <span class="arrow"></span></th>
+            <th class="num sortable" data-sort="sensitivity" title="how far the implied value must move for the verdict to flip">Sensitivity <span class="arrow"></span></th>
             <th class="num sortable" data-sort="verdict">Verdict <span class="arrow"></span></th>
+            <th style="width:98px">Ordering</th>
           </tr>
         </thead>
         <tbody id="board-body"></tbody>
@@ -93,13 +95,19 @@
       </div>
       <div class="card">
         <h3>Leave-one-out, in multiples</h3>
-        <p class="prose small">Each formula is refit with one protocol left out, predicts that protocol, and the median miss is reported as a multiple: 2.00× is a typical miss of a factor of two.</p>
+        <p class="prose small">Each formula is refit with one protocol left out, predicts that protocol, and the median miss is reported as the multiple exp(median&nbsp;|log&nbsp;error|): 1.00× is a perfect fit, 2.00× a typical error of a factor of two. The same rows are then predicted three ways that do not see them: leave one out, an alternating split, and a time split.</p>
         <table class="rivals" id="rivals"></table>
       </div>
     </div>
     <div class="card wide">
       <h3>What the fit read, and what it dropped</h3>
       <table class="filters" id="filters"></table>
+    </div>
+    <div class="card wide">
+      <h3>Out of sample, three ways</h3>
+      <p class="prose small">The claim the board leans on most is that its misses are measured, not assumed. A random split can flatter a model whose data drifted; a time split cannot, because it trains on the protocols listed longest ago and tests on the ones listed most recently, which is the reader's situation.</p>
+      <table class="rivals" id="oos"></table>
+      <p class="prose small" id="oos-note"></p>
     </div>
     <div class="grid2">
       <div class="card">
@@ -119,7 +127,7 @@
     <div class="table-wrap">
       <table class="board live-table">
         <thead><tr>
-          <th class="num">#</th><th>Protocol</th><th>Chains</th>
+          <th class="num">#</th><th>Protocol</th><th class="chains-h">Chains</th>
           <th class="num">TVL</th><th class="num">Market cap</th><th class="num">Mkt cap ÷ TVL</th><th class="num">7-day</th>
         </tr></thead>
         <tbody id="live-body"></tbody>

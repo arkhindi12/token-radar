@@ -378,7 +378,7 @@ export interface Plan {
 }
 
 /**
- * A farm plan: five concrete steps, each an action with a dollar cost and a time. It is derived from
+ * A farm plan: six concrete steps, each an action with a dollar cost and a time. It is derived from
  * the protocol's own record (category, first chain, TVL, age) and never from a list of names, and
  * every step's total is stated in dollars so a reader can add the plan up. The KYC step comes first,
  * because the cheapest way to lose the whole plan is to farm a venue that will not sell to you.

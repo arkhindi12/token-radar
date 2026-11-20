@@ -136,7 +136,7 @@ input[type="search"]:focus, select:focus { border-color: var(--slate); box-shado
 
 /* ---------------------------------------------------------------- board table */
 .table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: var(--r); background: var(--card); }
-table.board { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.board { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 table.board thead th {
   position: sticky; top: 0; z-index: 1;
   background: #efece4;
@@ -144,7 +144,7 @@ table.board thead th {
   text-align: left;
   font-family: var(--mono); font-weight: 500; font-size: 10.5px;
   text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3);
-  padding: var(--s2) var(--s3);
+  padding: 7px 7px;
   white-space: nowrap;
 }
 table.board thead th.num { text-align: right; }
@@ -152,31 +152,31 @@ th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--ink); }
 th.sortable .arrow { display: inline-block; width: 9px; color: var(--accent); }
 th.sortable { color: var(--ink-2); }
-table.board tbody td { padding: 9px var(--s3); border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+table.board tbody td { padding: 8px 7px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
 table.board tbody tr { cursor: pointer; }
 table.board tbody tr:hover td { background: #f3f6f2; }
 table.board tbody tr:last-child td { border-bottom: 0; }
 table.board tr.off td { background: #fbfaf6; }
 table.board tr.off:hover td { background: #f3f6f2; }
 
-.rank { font-family: var(--mono); font-size: 13px; color: var(--ink); }
+.rank { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
 .bandrank { display: block; font-family: var(--mono); font-size: 10.5px; color: var(--slate); }
 .bandrank.warn { color: #8a7a62; }
 .proto { font-weight: 600; color: var(--ink); }
-.proto .slug { display: block; font-family: var(--mono); font-weight: 400; font-size: 11px; color: var(--ink-3); }
+.proto .slug { display: block; font-family: var(--mono); font-weight: 400; font-size: 10.5px; color: var(--ink-3); }
 .tags { display: flex; gap: 4px; margin-top: 3px; flex-wrap: wrap; }
 .tag { font-family: var(--mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em; padding: 1px 5px; border-radius: 2px; background: var(--rule-soft); color: var(--ink-3); }
 .tag.wl { background: var(--accent); color: #fff; }
 .tag.cat { background: #e9eef3; color: var(--slate); }
-.chains { color: var(--ink-3); font-size: 11.5px; max-width: 160px; }
+.chains { color: var(--ink-3); font-size: 11px; max-width: 108px; }
 .money { font-family: var(--mono); font-size: 12.5px; white-space: nowrap; }
 .money.strong { font-weight: 600; color: var(--ink); }
 .delta.up { color: var(--accent); }
 .delta.down { color: var(--rust); }
 .delta.flat { color: var(--ink-3); }
-.range { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+.range { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); white-space: nowrap; }
 .range i { font-style: normal; color: var(--rust); }
-.bar { height: 3px; background: var(--rule-soft); position: relative; margin-top: 5px; width: 84px; margin-left: auto; border-radius: 2px; overflow: hidden; }
+.bar { height: 3px; background: var(--rule-soft); position: relative; margin-top: 5px; width: 76px; margin-left: auto; border-radius: 2px; overflow: hidden; }
 .bar b { position: absolute; top: 0; bottom: 0; background: #9fb2c4; }
 .bar s { position: absolute; top: -1px; bottom: -1px; width: 2px; background: var(--ink); }
 .verdict { font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; padding: 2px 7px; border-radius: 2px; }
@@ -231,6 +231,13 @@ table.filters td.n { font-family: var(--mono); text-align: right; }
 .reconcile { font-family: var(--mono); font-size: 12.5px; line-height: 2; color: var(--ink-2); }
 .reconcile b { color: var(--ink); }
 .reconcile .plus { color: var(--ink-3); }
+
+.sure { display: inline-block; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.03em; padding: 1px 5px; border-radius: 2px; white-space: nowrap; }
+.sure.certain { background: var(--accent-soft); color: var(--accent); }
+.sure.uncertain { background: var(--rust-soft); color: var(--rust); }
+.sens { font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
+.sens.low { color: var(--accent); }
+.sens.high { color: var(--rust); }
 
 /* ---------------------------------------------------------------- detail drawer */
 .scrim { position: fixed; inset: 0; background: rgba(20, 24, 29, 0.42); z-index: 20; }

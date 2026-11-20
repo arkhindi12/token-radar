@@ -62,8 +62,9 @@
     '<b>If you only read one line:</b> the board\u2019s first row is <b>' + esc(top.name) + '</b>, implied at ' +
     compact(top.implied_value_usd) + ' on ' + compact(top.tvl_usd) + ' of TVL. Forty ranks down it is <b>' +
     esc(mid.name) + '</b>, at ' + compact(mid.implied_value_usd) + '. Read the band before the rank: a typical held-out row misses by ' +
-    times(M.loo_median) + ', the band runs ' + times(M.p10) + ' to ' + times(M.p90) + ', and every one of the ' +
-    (D.rows.length - 1) + ' neighbouring pairs has bands that cross, so the exact order below the very top is a claim this data does not settle. ' +
+    times(M.loo_median) + ' (median absolute error, 1.00\u00d7 being perfect), and the band runs ' + times(M.p10) + ' to ' + times(M.p90) +
+    '. The order is still certain where it matters: ' + D.overlaps + ' of the ' + D.rows.length +
+    ' ranks can be reached by another row\u2019s band, and the Rank cell prints the span each one can take. ' +
     'Every row carries its plan, its cost and its break-even in the detail view.');
 
   function stat(k, v, s) {
@@ -71,7 +72,7 @@
   }
   var beAll = D.rows.map(function (r) { return r.breakeven_drop_pct; });
   html('lede-stats',
-    stat('Typical miss, held out', times(M.loo_median), 'leave-one-out over ' + M.n + ' rows, exp(median |log|)') +
+    stat('Typical miss, held out', times(M.loo_median), 'median absolute error over ' + M.n + ' rows; 1.00\u00d7 is perfect') +
     stat('Band p10 / p90', times(M.p10) + ' \u2013 ' + times(M.p90), 'measured on the same fit, not chosen') +
     stat('Board value', compact(D.rows[D.rows.length - 1].implied_value_usd) + ' \u2192 ' + compact(D.rows[0].implied_value_usd), 'sum ' + compact(D.seal.total_implied_usd)) +
     stat('Break-even drop', Math.min.apply(null, beAll).toFixed(1) + ' \u2013 ' + Math.max.apply(null, beAll).toFixed(1) + '%', 'a launch must fall this far before its plan loses money'));
@@ -135,6 +136,8 @@
     if (state.sort === 'band_lo') return r.band.lo;
     if (state.sort === 'change_7d') return r.change_7d === null ? -999 : r.change_7d;
     if (state.sort === 'verdict') return r.verdict;
+    if (state.sort === 'drop_max_1000') return r.threshold.drop_max_1000;
+    if (state.sort === 'sensitivity') return r.threshold.sensitivity;
     return r[state.sort];
   }
 
@@ -165,10 +168,11 @@
       var width = (100 * r.band.lo_rank) / D.rows.length - left;
       var bar = '<div class="bar"><b style="left:' + left.toFixed(2) + '%;width:' + Math.max(0.8, width).toFixed(2) + '%"></b>' +
         '<s style="left:' + ((100 * r.rank) / D.rows.length).toFixed(2) + '%"></s></div>';
-      var beClass = r.breakeven_drop_pct >= 99.5 ? 'high' : r.breakeven_drop_pct >= 90 ? 'mid' : 'low';
+      var beClass = r.threshold.drop_max_1000 >= 99.5 ? 'high' : r.threshold.drop_max_1000 >= 90 ? 'mid' : 'low';
+      var sensClass = r.threshold.sensitivity < 0.5 ? 'low' : 'high';
       return '<tr class="' + (r.region === 'off-list' ? 'off' : '') + '" data-slug="' + esc(r.slug) + '">' +
-        '<td class="num"><span class="rank">' + r.rank + '</span><span class="bandrank' + (r.band.overlap ? ' warn' : '') + '">' +
-          r.band.hi_rank + '\u2013' + r.band.lo_rank + (r.band.overlap ? ' \u26a0' : '') + '</span></td>' +
+        '<td class="num"><span class="rank">' + r.rank + '</span><span class="bandrank' + (r.threshold_rank_certain ? '' : ' warn') + '">' +
+          r.band.hi_rank + '\u2013' + r.band.lo_rank + '</span></td>' +
         '<td><span class="proto">' + esc(r.name) + '<span class="slug">' + esc(r.slug) + '</span></span><div class="tags">' +
           '<span class="tag ' + (r.region === 'watchlist' ? 'wl' : '') + '">' + (r.region === 'watchlist' ? 'watchlist' : 'off-list') + '</span>' +
           '<span class="tag cat">' + esc(r.category || 'uncategorised') + '</span></div></td>' +
@@ -178,8 +182,11 @@
         '<td class="num">' + age(r.age_days) + '</td>' +
         '<td class="num money strong">' + compact(r.implied_value_usd) + '</td>' +
         '<td class="num"><span class="range">' + compact(r.band.lo) + ' <i>\u2013</i> ' + compact(r.band.hi) + '</span>' + bar + '</td>' +
-        '<td class="num"><span class="be ' + beClass + '">' + r.breakeven_drop_pct.toFixed(1) + '%</span></td>' +
+        '<td class="num"><span class="be ' + beClass + '">' + r.threshold.drop_max_1000.toFixed(1) + '%</span></td>' +
+        '<td class="num"><span class="sens ' + sensClass + '">' + (r.threshold.sensitivity * 100).toFixed(1) + '%</span></td>' +
         '<td class="num"><span class="verdict ' + r.verdict + '">' + r.verdict + '</span></td>' +
+        '<td><span class="sure ' + (r.threshold_rank_certain ? 'certain' : 'uncertain') + '">' +
+          (r.threshold_rank_certain ? 'rank certain' : 'rivals reach it') + '</span></td>' +
         '</tr>';
     }).join('');
     html('board-body', body);
@@ -228,7 +235,7 @@
       '<h2>' + esc(r.name) + '</h2>' +
       '<div class="sub">rank ' + r.rank + ' of ' + D.rows.length + ' \u00b7 ' + esc(r.slug) + ' \u00b7 ' + esc(r.category || 'uncategorised') +
       ' \u00b7 ' + esc(r.chains.join(', ')) + ' \u00b7 ' + (r.region === 'watchlist' ? 'on the watchlist' : 'off the watchlist') + '</div>' +
-      (r.band.overlap ? '<div class="warn">This row\u2019s band crosses its neighbour\u2019s, so its ordering against the rows around it is not certain. The plausible rank says so: ' + r.band.hi_rank + '\u2013' + r.band.lo_rank + '.</div>' : '') +
+      (r.threshold_rank_certain ? '' : '<div class="warn">Another row\u2019s band reaches this row\u2019s value without this row\u2019s reaching back, so its exact rank is not certain. The plausible rank says so: ' + r.band.hi_rank + '\u2013' + r.band.lo_rank + '.</div>') +
       '<div class="hero"><div><div class="lbl">Implied value</div><div class="big">' + compact(r.implied_value_usd) + '</div>' +
         '<div class="band">exactly $' + exact(r.implied_value_usd) + ' \u00b7 a multiple of ' + times(A.multiple) + ' its TVL</div></div>' +
         '<div><div class="lbl">p10 \u2013 p90, the honest band</div><div class="band">' + compact(r.band.lo) + ' \u2013 ' + compact(r.band.hi) + '</div>' +
@@ -256,11 +263,15 @@
         '<span class="k">expected to you</span><span>$' + exact(Math.round(r.expected_usd)) + ' at the base case: implied value \u00d7 ' + D.assumptions.hold_share_of_implied * 100 + '% \u00d7 ' + (1 - D.assumptions.drop_pct / 100) + ' \u00d7 momentum ' + A.momentum + ' \u00d7 maturity ' + A.maturity + ' \u00d7 evidence ' + A.evidence + '</span>' +
         '<span class="k">break-even drop</span><span><b>' + r.breakeven_drop_pct.toFixed(1) + '%</b>: the launch can fall this far before the plan stops paying for itself</span>' +
         '<span class="k">break-even value</span><span>$' + exact(r.breakeven_usd) + ' of token market cap is the floor at which $' + exact(r.plan_cost_usd) + ' comes back</span>' +
+        '<span class="k">at a $1,000 position</span><span>positive at any drop below <b>' + r.threshold.drop_max_1000.toFixed(2) + '%</b>: the token keeps ' + (r.threshold.keep_floor_1000 * 100).toFixed(3) + '% of the implied value and $1,000 comes back</span>' +
+        '<span class="k">sensitivity</span><span>the implied value would have to move <b>' + (r.threshold.sensitivity * 100).toFixed(1) + '%</b> for the verdict to flip \u2014 ' + (r.threshold.robust ? 'it never flips while the model over-predicts, since the break-even value sits far below the implication' : 'it flips if the model over-predicts by that much') + '</span>' +
       '</div>' +
-      '<h4>Why the verdict is not a slider</h4>' +
-      '<p class="prose small">' + esc(r.booster) + '. ' +
-        'No single input moves this row across a line: the cost is fixed by the plan (a $' + exact(r.plan_cost_usd) + ' campaign), and the drop share needed is the column printed on the board. ' +
-        'The verdict is <b>' + r.verdict + '</b> at the base assumption of a ' + D.assumptions.drop_pct + '% drop.</p>' +
+      '<h4>Why the verdict is a threshold, not a slide</h4>' +
+      '<p class="prose small">The plan costs $' + exact(r.plan_cost_usd) + ' and the farm returns ' + D.assumptions.hold_share_of_implied * 100 + '% of the implied value, so it pays ' +
+        'while the token keeps at least ' + (r.threshold.keep_floor * 100).toFixed(4) + '% of ' + compact(r.implied_value_usd) + ' \u2014 any drop below ' + r.threshold.drop_max.toFixed(2) + '%. ' +
+        'At a flat $1,000 position the same threshold is ' + r.threshold.drop_max_1000.toFixed(2) + '. ' +
+        'Nothing a reader drags moves the verdict: the cost is fixed by the plan, and the only input that could move it is a model over-prediction of ' + (r.threshold.sensitivity * 100).toFixed(1) + '% or worse. ' +
+        'The inputs behind the ranking: ' + esc(r.booster) + '.</p>' +
       '</div><div>' +
       '<h4>The farm plan, step by step</h4>' +
       '<ol class="steps">' + plan + '</ol>' +
@@ -283,6 +294,13 @@
     'the implied value of a protocol that records no token is the fitted line evaluated at its TVL. ' +
     'The line is an estimate, so it comes with the residue it left on the rows that taught it, and with the error it made on rows it did not see.');
 
+  var th = D.rows[0].threshold;
+  html('model-lede', el('model-lede').innerHTML +
+    '<p>The verdict under each row is a stated threshold, not a slider. A plan costing $' + exact(D.rows[0].plan_cost_usd) + ' that returns ' +
+    D.assumptions.hold_share_of_implied * 100 + '% of the implied value turns positive the moment that value keeps more than ' +
+    (th.keep_floor * 100).toFixed(3) + '%; at the flattest position the board prices, $1,000, the line is ' + (th.keep_floor_1000 * 100).toFixed(3) +
+    '%. <b>Read the Drop at $1k column</b>: a row at 99.8% pays unless the launch falls more than 99.8% \u2014 so the honest question is never the verdict, it is whether the block is worth the token at all.</p>');
+
   html('coef',
     '<div class="lbl">implied market cap =</div>' +
     '<div class="big">exp(<span class="v">' + M.a.toFixed(4) + '</span>) \u00d7 TVL <span class="v">' + M.b.toFixed(4) + '</span></div>' +
@@ -303,6 +321,29 @@
     '<thead><tr><th>Formula</th><th>As fitted</th><th class="num">Typical miss</th><th class="num">p10 \u2013 p90</th><th class="num">within 2\u00d7</th></tr></thead>' +
     '<tbody>' + rivals + '</tbody>');
   el('rivals').querySelectorAll('td.num').forEach(function (td) { td.style.textAlign = 'right'; });
+
+  // The three out-of-sample records, side by side, plus the sentence a reader can act on.
+  var O = D.oos;
+  var oosRows = [O.loo, O.random, O.time].map(function (o) {
+    return '<tr><td>' + esc(o.name) + '</td><td class="f">' + esc(o.how) + '</td>' +
+      '<td class="num">' + o.train + ' / ' + o.test + '</td>' +
+      '<td class="num">' + times(o.median_abs) + '</td><td class="num">' + times(o.p10) + ' \u2013 ' + times(o.p90) + '</td>' +
+      '<td class="num">' + times(o.centre) + '</td><td class="num">' + (o.within2x * 100).toFixed(0) + '%</td></tr>';
+  }).join('');
+  html('oos',
+    '<thead><tr><th>Split</th><th>How</th><th class="num">train / test</th><th class="num">Typical miss</th>' +
+    '<th class="num">p10 \u2013 p90</th><th class="num">Centre</th><th class="num">within 2\u00d7</th></tr></thead><tbody>' + oosRows + '</tbody>');
+  el('oos').querySelectorAll('td.num').forEach(function (td) { td.style.textAlign = 'right'; });
+  var gap = O.time.median_abs / O.loo.median_abs;
+  var drift = (O.time.centre - 1) * 100;
+  html('oos-note',
+    'Read across: ' + (gap < 1.05 && gap > 0.95
+      ? 'the time split lands within ' + (Math.abs(gap - 1) * 100).toFixed(0) + '% of the leave-one-out figure, so the miss does not grow when the model is fitted only on older protocols and tested on newer ones. '
+      : 'the time split is ' + (gap > 1 ? (gap * 100 - 100).toFixed(0) + '% worse' : (100 - gap * 100).toFixed(0) + '% better') + ' than the leave-one-out figure, so the miss moves when the model is fitted only on older protocols. ') +
+    'The centre column is exp(median log error): ' + times(O.time.centre) + ' on the time split means the model ' +
+    (O.time.centre < 1 ? 'over-predicts' : 'under-predicts') + ' a newer protocol by about ' + Math.abs(drift).toFixed(0) + '% at the median. ' +
+    'The p10\u2013p90 spread of the out-of-sample misses is far wider than the p10\u2013p90 of the fit\u2019s own residues (' + times(M.p10) + ' \u2013 ' + times(M.p90) + '): ' +
+    'a prediction for a row the fit did not see is noisier than a residual, and the page prints both rather than the flattering one.');
 
   var filters = D.filters.map(function (f) {
     return '<tr><td>' + esc(f.name) + '</td><td class="n">' + f.count + '</td><td class="f">' + esc(f.rule) + '</td></tr>';

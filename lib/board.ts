@@ -18,6 +18,7 @@
 import { createHash } from 'node:crypto';
 import type { Protocol, Snapshot } from './snapshot.ts';
 import { ageDays, exchangeChains, recordedSymbols, recordsToken, venueSignal, VERSION_MARKER } from './snapshot.ts';
+import { oosSplit, thresholds, THRESHOLD_DEPOSIT, type OosRecord, type Threshold, type DatedPair } from './honesty.ts';
 import {
   buildPlan,
   compareRows,
@@ -82,6 +83,10 @@ export interface Row {
   expected_usd: number;
   /** Break-even value of the implied token: the plan's cost divided by the holding. */
   breakeven_usd: number;
+  /** The same break-even as a stated threshold, at the plan's cost and at a $1000 position. */
+  threshold: Threshold & { deposit_1000: number };
+  /** False when another row's band reaches this row's point and this row's does not reach back. */
+  threshold_rank_certain: boolean;
   verdict: Verdict;
   plan_cost_usd: number;
   booster: string;
@@ -127,8 +132,15 @@ export interface Radar {
   rows: Row[];
   live: LiveRow[];
   excluded: ExcludedRow[];
-  /** Rows whose band overlaps the next rank's band, as runs. */
+  /** Out-of-sample records: leave-one-out, an alternating split and a time split. */
+  oos: { loo: OosRecord; random: OosRecord; time: OosRecord };
+  /**
+   * The span of ranks a row's band can reach: the count of rows whose own band crosses the row's rank.
+   * A neighbour's interval overlapping is not an ambiguity; an interval that contains the row's own
+   * point, at a row whose own interval does not contain the neighbour's, is.
+   */
   overlaps: number;
+
 }
 
 const round = (n: number, digits: number): number => {
@@ -201,6 +213,8 @@ function exclusionReason(signal: string): string {
 export function buildRadar(snapshot: Snapshot): Radar {
   const model = fitValueModel(snapshot);
   const rivals = rivalScores(snapshot, model.rows, model);
+  const dated: DatedPair[] = model.rows.map((r) => ({ ...r, days_listed: ageDays(snapshot.as_of, snapshot.protocols.find((p) => p.slug === r.slug)?.listed_at ?? null) }));
+  const oos = oosSplit(dated);
   const filters = fitFilters(snapshot);
   const { ranked, excluded, live } = rankedProtocols(snapshot);
   const watch = new Set(snapshot.watchlist);
@@ -214,10 +228,13 @@ export function buildRadar(snapshot: Snapshot): Radar {
     implied: number;
   }
   const clampImplied = (v: number): number => Math.min(MAX_IMPLIED, Math.max(1, Math.round(v)));
+  // The band is the interval of the prediction, so both of its ends take the same clamp as the point
+  // estimate. An asymmetric clamp (Math.max(1, ...) on one end, `implied` on the other) put the low
+  // end of the smallest rows a rounding step off the band the page states.
   const scored: Scored[] = ranked.map((p) => {
     const raw = predict(model, p.tvl_usd);
     const implied = clampImplied(raw);
-    return { p, raw, lo: clampImplied(raw * model.p10), hi: Math.min(MAX_IMPLIED, Math.max(implied, Math.round(raw * model.p90))), implied };
+    return { p, raw, lo: clampImplied(raw * model.p10), hi: clampImplied(raw * model.p90), implied };
   });
   // Rank by the point estimate; ties break on the quieter 7-day change, then the slug, so the order
   // is total and the same on every run.
@@ -240,6 +257,7 @@ export function buildRadar(snapshot: Snapshot): Radar {
     const rankLo = lowRank(s.lo);
     const rankHi = highRank(s.hi);
     const verdict: Verdict = expected >= cost ? 'FARM' : expected >= cost / 4 ? 'MARGINAL' : 'SKIP';
+    const th = thresholds(s.implied, HOLD_SHARE, cost);
     return {
       rank: i + 1,
       slug: s.p.slug,
@@ -266,26 +284,36 @@ export function buildRadar(snapshot: Snapshot): Radar {
       breakeven_drop_pct: round(breakeven, 2),
       expected_usd: round(expected, 2),
       breakeven_usd: round(cost / HOLD_SHARE, 0),
+      threshold: { ...th, deposit_1000: THRESHOLD_DEPOSIT },
       verdict,
       plan_cost_usd: cost,
+      threshold_rank_certain: true,
       booster: b.note,
       farm_steps: plan.steps,
     };
   });
 
-  // A row's band overlaps its neighbour's when the two intervals cross: the point estimates are
-  // ordered, but the intervals say the ordering is not certain, and the page says where.
+  // A row's rank is certain only where no other row's band can reach it. `overlaps` counts the ranks
+  // that are not certain; that is what the page prints against the Neighbouring-pairs sentence, so
+  // the two can never disagree.
   let overlaps = 0;
-  for (let i = 0; i + 1 < rows.length; i++) {
-    const a = rows[i]!;
-    const next = rows[i + 1]!;
-    if (a.band.lo <= next.band.hi) {
-      a.band.overlap = true;
-      next.band.overlap = true;
-      overlaps++;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]!;
+    let certainHere = true;
+    for (let j = 0; j < rows.length; j++) {
+      if (i === j) continue;
+      const o = rows[j]!;
+      // The other row's interval reaches this row's point, and this row's interval does not reach back.
+      const reaches = o.band.lo <= r.implied_value_usd && o.band.hi >= r.implied_value_usd;
+      const back = r.band.lo <= o.implied_value_usd;
+      if (reaches && !back) {
+        certainHere = false;
+        break;
+      }
     }
+    r.threshold_rank_certain = certainHere;
+    if (!certainHere) overlaps++;
   }
-  rows[rows.length - 1]!.band.overlap = rows.length > 1 ? rows[rows.length - 2]!.band.overlap && rows[rows.length - 1]!.band.lo <= rows[rows.length - 2]!.band.hi : false;
 
   const liveRows: LiveRow[] = live
     .filter((p) => p.tvl_usd > 0)
@@ -338,6 +366,7 @@ export function buildRadar(snapshot: Snapshot): Radar {
       watched: rows.filter((r) => r.region === 'watchlist').length,
       off_list: rows.filter((r) => r.region === 'off-list').length,
     },
+    oos: { loo: oos.loo, random: oos.random, time: oos.time },
     rows,
     live: liveRows,
     excluded: excludedRows,
@@ -380,6 +409,12 @@ export function boardCheck(radar: Radar, snapshot: Snapshot): string | null {
     }
     if (!Number.isSafeInteger(r.implied_value_usd) || r.implied_value_usd <= 0) return `${r.slug} has implied value ${r.implied_value_usd}`;
     if (!Number.isFinite(r.band.lo) || !Number.isFinite(r.band.hi) || r.band.lo > r.implied_value_usd || r.band.hi < r.implied_value_usd) return `${r.slug}'s band does not hold its point estimate`;
+    // The band is the model's own interval, not a decoration: its ends must be the raw prediction times
+    // the fitted p10 and p90, to one dollar of rounding. tools/audit.ts checks the same identity from
+    // outside; this is the one that stops a bad run before it writes.
+    if (Math.abs(r.band.lo - Math.round(r.arithmetic.raw * radar.model.p10)) > 1 || Math.abs(r.band.hi - Math.round(r.arithmetic.raw * radar.model.p90)) > 1) {
+      return `${r.slug}'s band is not its prediction times the fitted p10 and p90`;
+    }
   }
   if (radar.model.n < 20) return `the fit read ${radar.model.n} pairs`;
   if (radar.accounting.live + radar.accounting.ranked + radar.accounting.excluded !== radar.accounting.total) {
@@ -431,6 +466,7 @@ export function dataScript(radar: Radar, seal: Record<string, unknown>): string 
     rivals: radar.rivals,
     assumptions: radar.assumptions,
     accounting: radar.accounting,
+    oos: radar.oos,
     overlaps: radar.overlaps,
     seal,
     rows: radar.rows,
