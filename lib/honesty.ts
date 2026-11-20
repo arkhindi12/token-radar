@@ -140,17 +140,20 @@ export const HORIZON_MONTHS = 12;
 export const THRESHOLD_DEPOSIT = 1000;
 
 /**
- * The share of the implied value a farmer banks at the horizon, under the base assumptions: a
- * quarter of a basis point. The arithmetic forbids anything larger. The plans on this board cost $53
- * to $518 and the implied values run from $3.3m to $90m; a drop of 40% is a believable base case, and
- * for the median row (implied $11m, plan $218) it needs a banked share of $218 / ($11m x 0.6) =
- * 3.2e-5. A share of 1e-3 or 1e-2 - a tenth of a per cent of market cap or more - puts every row's
- * break-even above 96%, which is the number this board was told to stop printing. 3e-5 is the share at
- * which the break-even drops run 32% to 85%: the cheapest rows survive a third of a fall, the most
- * expensive ones need most of it. Four rows still have a plan that costs more than the whole banked
- * allocation and are SKIP for that reason alone; the page says so on every one of them.
+ * The share of the implied value a farmer banks at the horizon, under the conservative base.
+ *
+ * `HOLD_SHARE x KEEP_SHARE = 0.001 x 0.25 = 2.5e-4`, and that product is the number this board
+ * actually uses. The snapshot carries no airdrop, allocation or float field, so no share can be
+ * derived from it: the two inputs above are a stated convention a reader can move, not a finding.
+ * The brief they sit in is "a launch hands the community between a tenth of a per cent and a few
+ * per cent of supply, and the token keeps a quarter to all of its implied value once liquid".
+ *
+ * An earlier revision of this file shipped `BANKED_SHARE = 3e-5`, chosen by sweeping candidate
+ * values until the break-even column looked believable. That is the one thing this board must not
+ * do, and it is gone: the base is now the conservative end of the stated band, printed as an
+ * assumption on the page, and every row quotes the optimistic end beside it.
  */
-export const BANKED_SHARE = 3e-5;
+export const BANKED_SHARE = HOLD_SHARE * KEEP_SHARE;
 
 /** What a row's money comes to, and the break-evens that follow from it. */
 export interface Money {
