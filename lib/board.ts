@@ -18,7 +18,7 @@
 import { createHash } from 'node:crypto';
 import type { Protocol, Snapshot } from './snapshot.ts';
 import { ageDays, exchangeChains, recordedSymbols, recordsToken, venueSignal, VERSION_MARKER } from './snapshot.ts';
-import { oosSplit, thresholds, THRESHOLD_DEPOSIT, type OosRecord, type Threshold, type DatedPair } from './honesty.ts';
+import { BASIS, BANKED_SHARE, HOLD_SHARE, HORIZON_MONTHS, KEEP_SHARE, money, oosSplit, VERDICT_RULE, type Money, type OosRecord, type DatedPair } from './honesty.ts';
 import {
   buildPlan,
   compareRows,
@@ -56,10 +56,11 @@ export interface Arithmetic {
   /** The model's interval in dollars: raw * p10 and raw * p90. */
   lo: number;
   hi: number;
-  /** The record-based multipliers the plan's verdict uses (not the value model's inputs). */
+  /** The confidence terms that widen the band (never the money). */
   momentum: number;
   maturity: number;
   evidence: number;
+  confidence: number;
 }
 
 /** One ranked row. */
@@ -79,14 +80,18 @@ export interface Row {
   arithmetic: Arithmetic;
   /** The drop share (per cent) the farm must recover for the plan's cost to pay back. */
   breakeven_drop_pct: number;
-  /** Expected value of holding the implied token in cash terms, at the plan's cost. */
+  /** Expected profit: what the farm banks beside the plan's cost, minus that cost. Can be negative. */
   expected_usd: number;
+  /** What the farmer's allocation is worth once liquid and vested, before the cost. */
+  banked_usd: number;
   /** Break-even value of the implied token: the plan's cost divided by the holding. */
   breakeven_usd: number;
-  /** The same break-even as a stated threshold, at the plan's cost and at a $1000 position. */
-  threshold: Threshold & { deposit_1000: number };
+  /** What the farm is worth at the base assumptions, and the break-evens that follow from it. */
+  money: Money;
   /** False when another row's band reaches this row's point and this row's does not reach back. */
   threshold_rank_certain: boolean;
+  /** The verdict at the most generous assumption in BASIS, so a row's dependence on it is visible. */
+  verdict_if_kind: Verdict;
   verdict: Verdict;
   plan_cost_usd: number;
   booster: string;
@@ -127,7 +132,15 @@ export interface Radar {
   filters: FitFilter[];
   rivals: RivalScore[];
   /** The deposit and drop share a row's verdict is computed at (the row's own deposit; the shared drop). */
-  assumptions: { drop_pct: number; hold_share_of_implied: number; note: string };
+  assumptions: {
+    hold_share: number;
+    keep_share: number;
+    banked_share: number;
+    horizon_months: number;
+    basis: { key: string; label: string; banked: number }[];
+    verdict_rule: { farm: string; marginal: string; skip: string };
+    note: string;
+  };
   accounting: { total: number; live: number; ranked: number; excluded: number; excluded_by_signal: Record<string, number>; watched: number; off_list: number };
   rows: Row[];
   live: LiveRow[];
@@ -148,28 +161,38 @@ const round = (n: number, digits: number): number => {
   return Math.round(n * f) / f;
 };
 
-/** The drop share a row's verdict is computed at: one assumption, stated on the page, not a slider. */
-export const DROP_PCT = 50;
-
-/** The share of a protocol's implied value a farmer is assumed to receive in tokens. */
-export const HOLD_SHARE = 0.005;
-
-/** The attributes that scale a row's expected value off the point estimate, each printed with the row. */
-export function boosters(p: Protocol, age: number | null): { momentum: number; maturity: number; evidence: number; note: string } {
-  const change = p.change_7d ?? 0;
-  const momentum = round(Math.min(1.6, Math.max(0.6, 1 + change / 100)), 3);
-  const days = age ?? 365;
-  const maturity = round(Math.min(1.1, Math.max(0.8, 0.8 + Math.min(days, 1100) / 1100 * 0.3)), 3);
-  const evidence = p.tvl_usd >= 500_000_000 ? 1.2 : p.tvl_usd >= 100_000_000 ? 1.1 : p.tvl_usd >= 25_000_000 ? 1 : 0.85;
-  const note = `7-day change ${change === 0 ? 'flat or unreported' : `${change > 0 ? '+' : ''}${change.toFixed(1)}%`} sets momentum ×${momentum}; ` +
-    `${age === null ? 'an undated record (365 days assumed)' : `${age} days listed`} sets maturity ×${maturity}; ` +
-    `$${Math.round(p.tvl_usd).toLocaleString('en-US')} of TVL sets evidence ×${evidence}`;
-  return { momentum, maturity, evidence, note };
+/**
+ * The verdict, from expected profit alone. FARM when the farm's expected profit is at least what it
+ * costs to run, so the money doubles; MARGINAL when the profit is positive but below the cost; SKIP
+ * when it is zero or negative. Nothing else moves it.
+ */
+export function verdict(profit: number, cost: number): Verdict {
+  if (profit >= cost) return 'FARM';
+  if (profit > 0) return 'MARGINAL';
+  return 'SKIP';
 }
 
-/** The break-even drop share: how far a launch has to fall before this plan's cost eats its return. */
-export function breakevenDrop(implied: number, holdShare: number, cost: number): number {
-  return 100 * (1 - (cost / holdShare) / implied);
+/**
+ * The record-based attributes that widen a row's band. They are confidence terms and nothing else:
+ * the 7-day change, the age of the record and the size of the TVL say how much to trust the model's
+ * estimate of this row, so they stretch the interval. They are never multiplied into the money a
+ * farmer receives, which is why they have no place in money() in honesty.ts.
+ *
+ *   factor = momentum x maturity x evidence, clamped to 0.6 .. 1.6
+ *
+ * A confident row keeps the band the fit measured; an unconfident one gets a band up to 1.6x wider.
+ */
+export function confidence(p: Protocol, age: number | null): { momentum: number; maturity: number; evidence: number; factor: number; note: string } {
+  const change = p.change_7d ?? 0;
+  const momentum = round(Math.min(1.3, Math.max(0.8, 1 + (Math.abs(change) / 100) * 0.5)), 3);
+  const days = age ?? 365;
+  const maturity = round(Math.min(1.15, Math.max(0.85, 0.85 + (Math.min(days, 1100) / 1100) * 0.3)), 3);
+  const evidence = p.tvl_usd >= 500_000_000 ? 1.1 : p.tvl_usd >= 100_000_000 ? 1.05 : p.tvl_usd >= 25_000_000 ? 1 : 0.9;
+  const factor = round(Math.min(1.6, Math.max(0.6, momentum * maturity * evidence)), 3);
+  const note = `a 7-day change of ${change === 0 ? 'flat or unreported' : `${change > 0 ? '+' : ''}${change.toFixed(1)}%`} widens the band x${momentum}; ` +
+    `${age === null ? 'an undated record (365 days assumed)' : `${age} days listed`} widens it x${maturity}; ` +
+    `$${Math.round(p.tvl_usd).toLocaleString('en-US')} of TVL widens it x${evidence}; together x${factor}`;
+  return { momentum, maturity, evidence, factor, note };
 }
 
 /** Choose the ranked protocols: every pre-token protocol with a real TVL that is not a venue. */
@@ -251,13 +274,13 @@ export function buildRadar(snapshot: Snapshot): Radar {
     const age = ageDays(snapshot.as_of, s.p.listed_at);
     const plan = buildPlan(s.p, age);
     const cost = plan.numbers.deposit + plan.numbers.gas;
-    const b = boosters(s.p, age);
-    const expected = s.implied * HOLD_SHARE * b.momentum * b.maturity * b.evidence * (1 - DROP_PCT / 100);
-    const breakeven = breakevenDrop(s.implied, HOLD_SHARE, cost);
+    const b = confidence(s.p, age);
+    const m = money(s.implied, cost);
     const rankLo = lowRank(s.lo);
     const rankHi = highRank(s.hi);
-    const verdict: Verdict = expected >= cost ? 'FARM' : expected >= cost / 4 ? 'MARGINAL' : 'SKIP';
-    const th = thresholds(s.implied, HOLD_SHARE, cost);
+    const rowVerdict = verdict(m.profit_usd, cost);
+    const kind = BASIS.find((v) => v.key === 'kind');
+    const verdictIfKind = verdict(money(s.implied, cost, kind?.banked ?? BANKED_SHARE).profit_usd, cost);
     return {
       rank: i + 1,
       slug: s.p.slug,
@@ -280,12 +303,23 @@ export function buildRadar(snapshot: Snapshot): Radar {
         momentum: b.momentum,
         maturity: b.maturity,
         evidence: b.evidence,
+        confidence: b.factor,
       },
-      breakeven_drop_pct: round(breakeven, 2),
-      expected_usd: round(expected, 2),
-      breakeven_usd: round(cost / HOLD_SHARE, 0),
-      threshold: { ...th, deposit_1000: THRESHOLD_DEPOSIT },
-      verdict,
+      breakeven_drop_pct: round(m.breakeven_drop_pct, 2),
+      expected_usd: round(m.profit_usd, 2),
+      banked_usd: round(m.banked_usd, 2),
+      breakeven_usd: round(m.breakeven_usd, 0),
+      money: {
+        banked_usd: round(m.banked_usd, 2),
+        profit_usd: round(m.profit_usd, 2),
+        keep_floor: round(m.keep_floor, 6),
+        breakeven_drop_pct: round(m.breakeven_drop_pct, 2),
+        breakeven_usd: round(m.breakeven_usd, 0),
+        drop_max_1000: round(m.drop_max_1000, 2),
+        deposit_1000: m.deposit_1000,
+      },
+      verdict: rowVerdict,
+      verdict_if_kind: verdictIfKind,
       plan_cost_usd: cost,
       threshold_rank_certain: true,
       booster: b.note,
@@ -351,11 +385,15 @@ export function buildRadar(snapshot: Snapshot): Radar {
     filters,
     rivals,
     assumptions: {
-      drop_pct: DROP_PCT,
-      hold_share_of_implied: HOLD_SHARE,
+      hold_share: HOLD_SHARE,
+      keep_share: KEEP_SHARE,
+      banked_share: BANKED_SHARE,
+      horizon_months: HORIZON_MONTHS,
+      basis: BASIS,
+      verdict_rule: VERDICT_RULE,
       note:
-        `A verdict assumes the launch hands a farmer ${HOLD_SHARE * 100}% of the protocol's implied value and that the token trades at ${100 - DROP_PCT}% of it once it is liquid; ` +
-        `each row's break-even column says how far that assumption can fail before the plan stops paying for itself.`,
+        `Expected profit = implied value x ${BANKED_SHARE * 100}% banked at month ${HORIZON_MONTHS} minus the plan's cost, where the banked share is ${HOLD_SHARE * 100}% of market cap handed to the whole farmer population times the ${KEEP_SHARE * 100}% the token keeps once liquid. ` +
+        `Both shares are assumptions, not measurements; the lean and kind rows in the model panel show how the verdicts move when they move.`,
     },
     accounting: {
       total: snapshot.protocols.length,

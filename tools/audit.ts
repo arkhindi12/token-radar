@@ -59,21 +59,26 @@ ok('p10/p50/p90 are the residual quantiles', Math.abs(q(resid, 0.1) - D.model.p1
 const bandOk = D.rows.every((r: any) => Math.abs(r.band.lo - Math.round(r.arithmetic.raw * D.model.p10)) <= 1 && Math.abs(r.band.hi - Math.round(r.arithmetic.raw * D.model.p90)) <= 1);
 ok('each row band is the raw prediction x p10/p90', bandOk, `every one of ${D.rows.length} rows, to one dollar of rounding`);
 
-// ---------------------------------------------------------------- 3. the break-even drop, worked by hand on one row
+// ---------------------------------------------------------------- 3. the money, worked by hand on one row
 const r = D.rows.find((x: any) => x.slug === 'steakhouse-financial') ?? D.rows[0];
 const V = r.implied_value_usd;
-const hold = D.assumptions.hold_share_of_implied;
+const banked = D.assumptions.banked_share;
 const steps = r.farm_steps.join(' ');
 const Ddep = Number((steps.match(/\$(\d+) for the position/) ?? [])[1]);
 const gas = Number((steps.match(/and \$(\d+) held back for gas/) ?? [])[1]);
 const f = Ddep + gas;
-const sStar = f / (hold * V);
 ok('plan cost in the steps equals the page cost', f === r.plan_cost_usd, `${r.slug}: $${Ddep} deposit + $${gas} gas = ${money(f)}; page ${money(r.plan_cost_usd)}`);
-ok('s* = f / (hold x V) reproduces the printed drop', Math.abs(100 * (1 - sStar) - r.breakeven_drop_pct) < 0.01, `s*=${sStar.toFixed(6)}, drop ${(100 * (1 - sStar)).toFixed(2)}%, page ${r.breakeven_drop_pct.toFixed(2)}%`);
-ok('identity s* x hold x V = f', Math.abs(sStar * hold * V - f) < 1e-6, `s* x hold(${hold}) x V(${money(V)}) = ${(sStar * hold * V).toFixed(2)} = f ${f}`);
-ok('break-even value is cost / hold', Math.abs(f / hold - r.breakeven_usd) <= 1, `${money(f / hold)} vs ${money(r.breakeven_usd)}`);
-const s1k = 1000 / (hold * V);
-ok('$1,000 threshold is 1000 / (hold x V)', Math.abs(100 * (1 - s1k) - r.threshold.drop_max_1000) < 1e-6, `drop ${(100 * (1 - s1k)).toFixed(2)}%, page ${r.threshold.drop_max_1000.toFixed(2)}%`);
+const sStar = f / (V * banked);
+ok('break-even drop = 1 - f / (V x banked)', Math.abs(100 * (1 - sStar) - r.money.breakeven_drop_pct) < 0.01, `f/(V x ${banked.toExponential(1)}) = ${sStar.toFixed(4)}, drop ${(100 * (1 - sStar)).toFixed(2)}%, page ${r.money.breakeven_drop_pct.toFixed(2)}%`);
+ok('banked value is V x banked', Math.abs(V * banked - r.money.banked_usd) < 1, `${(V * banked).toFixed(2)} vs ${r.money.banked_usd}`);
+ok('profit is banked minus cost', Math.abs(r.money.banked_usd - f - r.money.profit_usd) < 1, `${money(r.money.banked_usd)} - ${money(f)} = ${money(r.money.profit_usd)}`);
+ok('break-even value is cost / banked', Math.abs(f / banked - r.money.breakeven_usd) < 2, `${money(f / banked)} vs ${money(r.money.breakeven_usd)}`);
+ok('$1,000 threshold is 1000 / (V x banked)', Math.abs(100 * (1 - 1000 / (V * banked)) - r.money.drop_max_1000) < 0.01, `drop ${(100 * (1 - 1000 / (V * banked))).toFixed(2)}%, page ${r.money.drop_max_1000.toFixed(2)}%`);
+// The verdict is the sign of the profit, with FARM at twice the cost.
+const vOf = (p: number, c: number): string => (p >= c ? 'FARM' : p > 0 ? 'MARGINAL' : 'SKIP');
+ok('every verdict follows from its profit', D.rows.every((x: any) => x.verdict === vOf(x.money.profit_usd, x.plan_cost_usd)), `${D.rows.length} rows`);
+// No momentum, maturity or evidence term may reach the money: the profit is V x banked - cost, to the cent.
+ok('no confidence multiplier inflates the money', D.rows.every((x: any) => Math.abs(x.money.profit_usd - (x.implied_value_usd * banked - x.plan_cost_usd)) < 0.02), 'profit = V x banked - cost on every row');
 
 // ---------------------------------------------------------------- 4. the plausible-rank band is derived, not typed
 const points = D.rows.map((x: any) => x.implied_value_usd);

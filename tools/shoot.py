@@ -12,7 +12,7 @@ import sys
 from PIL import Image
 from playwright.sync_api import sync_playwright
 
-W, H = 1400, 1000
+W, H = 1400, 1250
 
 
 def main(out_dir: str, shots_dir: str) -> int:

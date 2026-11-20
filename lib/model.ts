@@ -316,13 +316,15 @@ export function rivalScores(snapshot: Snapshot, rows: readonly FitPair[], main: 
 
 // ---------------------------------------------------------------- farm plans
 
-/** The capital a plan puts in, by the protocol's TVL: big protocols absorb more without moving a price. */
+/**
+ * The capital a plan puts in, by the protocol's TVL, in one step rather than five. The board's money
+ * says a $50 position in the largest protocols captures the same share as a $500 one; the charge that
+ * a small position is dismissed as sybil and the gas are what site a plan, not its size. A flat $100
+ * keeps every plan's cost in a range a reader can compare, which a $50-to-$500 spread did not.
+ */
 export function depositFor(p: Protocol): number {
-  if (p.tvl_usd >= 2_000_000_000) return 500;
-  if (p.tvl_usd >= 500_000_000) return 300;
-  if (p.tvl_usd >= 100_000_000) return 200;
-  if (p.tvl_usd >= 20_000_000) return 100;
-  return 50;
+  void p;
+  return 100;
 }
 
 /** Gas a plan spends, in dollars, over the whole campaign; the chain's own cost, not a real quote. */

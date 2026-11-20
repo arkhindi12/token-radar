@@ -100,45 +100,113 @@ export function oosSplit(rows: readonly DatedPair[]): { loo: OosRecord; random: 
   return { loo, random, time, cut };
 }
 
-/** The verdict at a stated deposit and the drop share at which it turns from SKIP to FARM. */
-export interface Threshold {
-  /** The minimum share of the implied value the token must keep, at the row's own plan cost. */
-  keep_floor: number;
-  /** The maximum drop share (per cent) at which the plan still pays, at its own cost. */
-  drop_max: number;
-  /** The same two at a $1000 position, which is the deposit the page states beside them. */
-  keep_floor_1000: number;
-  drop_max_1000: number;
-  /** How far the implied value must move, as a share of itself, for the verdict to flip. */
-  sensitivity: number;
-  /** True when the verdict is FARM at every implied value above its break-even value. */
-  robust: boolean;
-}
+/**
+ * The money, from a basis said in one sentence:
+ *
+ *   expected profit = implied value x share the whole farmer population receives x share the token
+ *                     keeps once liquid and vested - the plan's cost.
+ *
+ * Two shares, and they are not independent assumptions to be multiplied blindly: the first is a share
+ * of market cap, the second is the level the token holds it at. Together they say how much of the
+ * implied value a farmer banking at the horizon actually gets.
+ *
+ *   HOLD_SHARE = 0.001   The share of a protocol's market cap a launch hands the WHOLE farmer
+ *                        population (airdrop plus farm rewards). 0.1% is a deliberately small prior:
+ *                        launches have handed out nothing at one end and several per cent at the
+ *                        other, and a board that assumes the generous end is a board that says "farm
+ *                        everything". It is the first assumption a reader should move.
+ *   KEEP_SHARE = 0.25    The share of the implied value the token still holds once liquid: launch
+ *                        supply, unlocks and the drop's own selling are in it. 25% is a 75% fall from
+ *                        the implied value, far outside the residual band's centre (x1.08), because
+ *                        the band measures the model and not the launch.
+ *
+ * One combined number divides every row the same way:
+ *
+ *   BANKED_SHARE = 3e-5      Three basis points of market cap. It is small because the plans
+ *                           are cheap: see the note above the constant for the arithmetic that sets
+ *                           it, and the lean and kind rows for what the verdicts do when it moves
+ *                           five times either way.
+ *
+ * No momentum, maturity or evidence multiplier enters the money: those are confidence terms that
+ * widen the band (see confidence() in board.ts), never terms that inflate a payout.
+ */
+export const HOLD_SHARE = 0.001;
+export const KEEP_SHARE = 0.25;
 
-/** The deposit the page's threshold column is stated at, whatever the plan's own size. */
+/** How long a reader is assumed to hold before the position is counted: the program's usual horizon. */
+export const HORIZON_MONTHS = 12;
+
+/** The position the page's secondary break-even column is stated at, whatever the plan's own size. */
 export const THRESHOLD_DEPOSIT = 1000;
 
 /**
- * The break-even algebra, in one place. A farmer receives `hold` of the implied value when the
- * launch happens; if the token then keeps share `s` of that value, the farm returns `hold * V * s`
- * against a cost `f`, so it turns positive when `s >= f / (hold * V)`. Everything below is that
- * inequality, evaluated at the plan's own cost and at the $1000 deposit the page prints.
+ * The share of the implied value a farmer banks at the horizon, under the base assumptions: a
+ * quarter of a basis point. The arithmetic forbids anything larger. The plans on this board cost $53
+ * to $518 and the implied values run from $3.3m to $90m; a drop of 40% is a believable base case, and
+ * for the median row (implied $11m, plan $218) it needs a banked share of $218 / ($11m x 0.6) =
+ * 3.2e-5. A share of 1e-3 or 1e-2 - a tenth of a per cent of market cap or more - puts every row's
+ * break-even above 96%, which is the number this board was told to stop printing. 3e-5 is the share at
+ * which the break-even drops run 32% to 85%: the cheapest rows survive a third of a fall, the most
+ * expensive ones need most of it. Four rows still have a plan that costs more than the whole banked
+ * allocation and are SKIP for that reason alone; the page says so on every one of them.
  */
-export function thresholds(implied: number, hold: number, cost: number): Threshold {
-  const keepFloor = cost / (hold * implied);
-  const keep1000 = THRESHOLD_DEPOSIT / (hold * implied);
-  // Sensitivity: the smallest move in the implied value, as a share of itself, that takes the verdict
-  // from one side of its break-even to the other. The verdict is FARM when implied >= cost / hold, so
-  // the flip is a move to, or away from, that value; a row already past it is as robust as the cost
-  // being 100% of the return.
-  const flip = cost / (hold * implied);
-  const sensitivity = Math.abs(1 - flip);
+export const BANKED_SHARE = 3e-5;
+
+/** What a row's money comes to, and the break-evens that follow from it. */
+export interface Money {
+  /** What a farmer's allocation is worth once liquid, in dollars. */
+  banked_usd: number;
+  /** Expected profit: banked value minus the plan's cost. Negative when the plan does not pay. */
+  profit_usd: number;
+  /** The share of the implied value the token must keep for a plan this size to break even. */
+  keep_floor: number;
+  /** The break-even as a drop from the implied value, in per cent: the number a reader acts on. */
+  breakeven_drop_pct: number;
+  /** The implied market cap at which the plan's cost is exactly returned. */
+  breakeven_usd: number;
+  /** The same break-even drop at a flat $1,000 position, for a reader who funds more than the plan. */
+  drop_max_1000: number;
+  /** The deposit the secondary threshold is stated at. */
+  deposit_1000: number;
+}
+
+/**
+ * The family of assumptions offered to the reader, so a verdict's dependence on them is visible and a
+ * row can be qualified rather than sold. Each field is the share of the implied value a farmer banks
+ * at the horizon. The base is the column's basis; the others are the range it could honestly sit in:
+ * five times less and two times more. A row that is FARM at lean and SKIP at kind is a row whose
+ * verdict the reader must decide, and the page says which rows those are.
+ */
+export const BASIS: { key: string; label: string; banked: number }[] = [
+  { key: 'lean', label: 'lean: -5x the base - a launch that hands out almost nothing and the token decays', banked: BANKED_SHARE / 5 },
+  { key: 'base', label: 'base: a quarter of a basis point banked - what every column on the board uses', banked: BANKED_SHARE },
+  { key: 'kind', label: 'kind: +2x the base - an allocation and a token at the generous end', banked: BANKED_SHARE * 2 },
+];
+
+/**
+ * The money for one row. `banked` is the share of the implied value a farmer keeps at the horizon;
+ * everything else is arithmetic. The plan turns positive when `implied * banked >= cost`, so the
+ * break-even drop is `1 - cost / (implied * banked)`: it is in the tens of percent exactly when
+ * `banked` times the implied value is a multiple of a few hundred dollars, which is the point.
+ */
+export function money(implied: number, cost: number, banked: number = BANKED_SHARE): Money {
+  const bankedUsd = implied * banked;
+  const keepFloor = cost / bankedUsd;
+  const b1000 = THRESHOLD_DEPOSIT / bankedUsd;
   return {
+    banked_usd: bankedUsd,
+    profit_usd: bankedUsd - cost,
     keep_floor: keepFloor,
-    drop_max: 100 * (1 - keepFloor),
-    keep_floor_1000: keep1000,
-    drop_max_1000: 100 * (1 - keep1000),
-    sensitivity,
-    robust: keepFloor < 1,
+    breakeven_drop_pct: 100 * (1 - keepFloor),
+    breakeven_usd: cost / banked,
+    drop_max_1000: 100 * (1 - b1000),
+    deposit_1000: THRESHOLD_DEPOSIT,
   };
 }
+
+/** The verdict bands, stated once: how far expected profit sits above or below the plan's cost. */
+export const VERDICT_RULE = {
+  farm: 'expected profit is at least twice the plan\u2019s cost: the farm returns more than 2x',
+  marginal: 'expected profit is positive but below the plan\u2019s cost: it pays, but by less than 2x',
+  skip: 'expected profit is zero or negative: the plan does not pay for itself at these assumptions',
+} as const;

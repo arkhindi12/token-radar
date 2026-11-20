@@ -59,28 +59,29 @@
 
     <p class="filter-note" id="filter-note"></p>
 
-    <div class="table-wrap">
+    <p class="legend" id="legend"><span class="legend-k">Legend</span></p>
+    <div class="table-wrap" id="board-scroll">
       <table class="board" id="board">
         <thead>
           <tr>
-            <th class="num sortable" data-sort="rank">Rank <span class="arrow"></span></th>
+            <th class="num sortable" data-sort="rank" title="the board's rank by implied value, 1 to N">Rank <span class="arrow"></span></th>
             <th class="sortable" data-sort="name">Protocol <span class="arrow"></span></th>
-            <th class="chains-h">Chains</th>
-            <th class="num sortable" data-sort="tvl_usd">TVL <span class="arrow"></span></th>
-            <th class="num sortable" data-sort="change_7d">7-day <span class="arrow"></span></th>
-            <th class="num sortable" data-sort="age_days">No token for <span class="arrow"></span></th>
-            <th class="num sortable" data-sort="implied_value_usd">Implied value <span class="arrow"></span></th>
-            <th class="num sortable" data-sort="band_lo">p10 – p90 <span class="arrow"></span></th>
-            <th class="num sortable" data-sort="drop_max_1000" title="the drop share at which a $1000 position stops paying for itself">Drop at $1k <span class="arrow"></span></th>
-            <th class="num sortable" data-sort="sensitivity" title="how far the implied value must move for the verdict to flip">Sensitivity <span class="arrow"></span></th>
+            <th class="chains-h">Category · chains</th>
+            <th class="num sortable" data-sort="tvl_usd" title="total value locked, in whole dollars">TVL <span class="arrow"></span></th>
+            <th class="num sortable" data-sort="change_7d" title="change in TVL over seven days, per cent">7-day <span class="arrow"></span></th>
+            <th class="num sortable" data-sort="age_days" title="months since DefiLlama began tracking it, undated rows listed last">No token, months <span class="arrow"></span></th>
+            <th class="num sortable" data-sort="implied_value_usd" title="the fit's point estimate of market cap">Implied value <span class="arrow"></span></th>
+            <th class="num sortable" data-sort="band_lo" title="where it could sit: the plausible-rank range the p10-p90 band reaches, and the band itself">Where it could sit <span class="arrow"></span></th>
+            <th class="num sortable" data-sort="profit_usd" title="expected profit in dollars: implied value x banked share - the plan's cost. Negative means it does not pay">Profit <span class="arrow"></span></th>
+            <th class="num sortable" data-sort="breakeven_drop_pct" title="break-even drop: how far the token may fall from the implied value before the plan stops paying">Break-even drop <span class="arrow"></span></th>
             <th class="num sortable" data-sort="verdict">Verdict <span class="arrow"></span></th>
-            <th style="width:98px">Ordering</th>
           </tr>
         </thead>
         <tbody id="board-body"></tbody>
       </table>
       <p class="empty" id="board-empty" hidden>No protocol matches these filters.</p>
     </div>
+    <div class="scroll-end" id="scroll-end" aria-hidden="true"></div>
     <p class="table-foot" id="table-foot"></p>
   </section>
 
@@ -127,7 +128,7 @@
     <div class="table-wrap">
       <table class="board live-table">
         <thead><tr>
-          <th class="num">#</th><th>Protocol</th><th class="chains-h">Chains</th>
+          <th class="num">#</th><th>Protocol</th><th class="chains-h">Category · chains</th>
           <th class="num">TVL</th><th class="num">Market cap</th><th class="num">Mkt cap ÷ TVL</th><th class="num">7-day</th>
         </tr></thead>
         <tbody id="live-body"></tbody>

@@ -36,6 +36,7 @@
   function html(id, s) { var e = el(id); if (e) { e.innerHTML = s; } }
 
   // ---------------------------------------------------------------- masthead + lede
+  html('legend-banked', (D.assumptions.banked_share * 100).toFixed(3) + '%');
   html('masthead-meta',
     'Snapshot <b>' + esc(D.as_of) + '</b><br>' +
     'Source: DefiLlama protocols, sealed<br>' +
@@ -60,11 +61,11 @@
   var mid = D.rows[Math.min(40, D.rows.length - 1)];
   html('answer',
     '<b>If you only read one line:</b> the board\u2019s first row is <b>' + esc(top.name) + '</b>, implied at ' +
-    compact(top.implied_value_usd) + ' on ' + compact(top.tvl_usd) + ' of TVL. Forty ranks down it is <b>' +
+    compact(top.implied_value_usd) + ' on ' + compact(top.tvl_usd) + ' of TVL. At rank ' + mid.rank + ' it is <b>' +
     esc(mid.name) + '</b>, at ' + compact(mid.implied_value_usd) + '. Read the band before the rank: a typical held-out row misses by ' +
     times(M.loo_median) + ' (median absolute error, 1.00\u00d7 being perfect), and the band runs ' + times(M.p10) + ' to ' + times(M.p90) +
-    '. The order is still certain where it matters: ' + D.overlaps + ' of the ' + D.rows.length +
-    ' ranks can be reached by another row\u2019s band, and the Rank cell prints the span each one can take. ' +
+    '. The Rank column is the point estimate; the range beside it is the same band expressed as ranks, and it is wide for almost every row: ' +
+    'the plausible rank reaches the bottom of the board for ' + D.rows.filter(function (r) { return r.band.lo_rank >= D.rows.length - 5; }).length + ' of ' + D.rows.length + '. ' +
     'Every row carries its plan, its cost and its break-even in the detail view.');
 
   function stat(k, v, s) {
@@ -136,8 +137,8 @@
     if (state.sort === 'band_lo') return r.band.lo;
     if (state.sort === 'change_7d') return r.change_7d === null ? -999 : r.change_7d;
     if (state.sort === 'verdict') return r.verdict;
-    if (state.sort === 'drop_max_1000') return r.threshold.drop_max_1000;
-    if (state.sort === 'sensitivity') return r.threshold.sensitivity;
+    if (state.sort === 'profit_usd') return r.money.profit_usd;
+    if (state.sort === 'breakeven_drop_pct') return r.money.breakeven_drop_pct;
     return r[state.sort];
   }
 
@@ -168,25 +169,23 @@
       var width = (100 * r.band.lo_rank) / D.rows.length - left;
       var bar = '<div class="bar"><b style="left:' + left.toFixed(2) + '%;width:' + Math.max(0.8, width).toFixed(2) + '%"></b>' +
         '<s style="left:' + ((100 * r.rank) / D.rows.length).toFixed(2) + '%"></s></div>';
-      var beClass = r.threshold.drop_max_1000 >= 99.5 ? 'high' : r.threshold.drop_max_1000 >= 90 ? 'mid' : 'low';
-      var sensClass = r.threshold.sensitivity < 0.5 ? 'low' : 'high';
+      var beClass = r.money.breakeven_drop_pct >= 85 ? 'high' : r.money.breakeven_drop_pct >= 50 ? 'mid' : 'low';
+      var p = r.money.profit_usd;
       return '<tr class="' + (r.region === 'off-list' ? 'off' : '') + '" data-slug="' + esc(r.slug) + '">' +
-        '<td class="num"><span class="rank">' + r.rank + '</span><span class="bandrank' + (r.threshold_rank_certain ? '' : ' warn') + '">' +
-          r.band.hi_rank + '\u2013' + r.band.lo_rank + '</span></td>' +
+        '<td class="num"><span class="rank">' + r.rank + '</span></td>' +
         '<td><span class="proto">' + esc(r.name) + '<span class="slug">' + esc(r.slug) + '</span></span><div class="tags">' +
-          '<span class="tag ' + (r.region === 'watchlist' ? 'wl' : '') + '">' + (r.region === 'watchlist' ? 'watchlist' : 'off-list') + '</span>' +
-          '<span class="tag cat">' + esc(r.category || 'uncategorised') + '</span></div></td>' +
-        '<td class="chains">' + esc(r.chains.slice(0, 3).join(', ')) + (r.chains.length > 3 ? ' +' + (r.chains.length - 3) : '') + '</td>' +
+          (r.region === 'watchlist' ? '<span class="tag wl">watchlist</span>' : '') + '</div></td>' +
+        '<td class="chains">' + esc(r.category || 'uncategorised') + '<span class="slug">' + esc(r.chains.slice(0, 2).join(', ')) + (r.chains.length > 2 ? ' +' + (r.chains.length - 2) : '') + '</span></td>' +
         '<td class="num money">' + compact(r.tvl_usd) + '</td>' +
         '<td class="num money delta ' + deltaClass(d) + '">' + (d === null ? '\u2014' : pct(d)) + '</td>' +
         '<td class="num">' + age(r.age_days) + '</td>' +
         '<td class="num money strong">' + compact(r.implied_value_usd) + '</td>' +
-        '<td class="num"><span class="range">' + compact(r.band.lo) + ' <i>\u2013</i> ' + compact(r.band.hi) + '</span>' + bar + '</td>' +
-        '<td class="num"><span class="be ' + beClass + '">' + r.threshold.drop_max_1000.toFixed(1) + '%</span></td>' +
-        '<td class="num"><span class="sens ' + sensClass + '">' + (r.threshold.sensitivity * 100).toFixed(1) + '%</span></td>' +
+        '<td class="num"><span class="range">' + compact(r.band.lo) + ' <i>\u2013</i> ' + compact(r.band.hi) + '</span>' +
+          '<span class="sit">ranks ' + r.band.hi_rank + '\u2013' + r.band.lo_rank + '</span>' + bar + '</td>' +
+        '<td class="num"><span class="profit ' + (p < 0 ? 'neg' : p >= r.plan_cost_usd ? 'pos' : 'thin') + '">' +
+          (p < 0 ? '\u2212$' + Math.abs(Math.round(p)).toLocaleString('en-US') : '$' + Math.round(p).toLocaleString('en-US')) + '</span></td>' +
+        '<td class="num"><span class="be ' + beClass + '">' + r.money.breakeven_drop_pct.toFixed(1) + '%</span></td>' +
         '<td class="num"><span class="verdict ' + r.verdict + '">' + r.verdict + '</span></td>' +
-        '<td><span class="sure ' + (r.threshold_rank_certain ? 'certain' : 'uncertain') + '">' +
-          (r.threshold_rank_certain ? 'rank certain' : 'rivals reach it') + '</span></td>' +
         '</tr>';
     }).join('');
     html('board-body', body);
@@ -206,6 +205,23 @@
     });
   }
 
+  // The legend is filled from the same data as the chips and sits directly above the table, between
+  // the filter line and the first row, so a reader meets the verdict chips and the band bar before the
+  // rows rather than after 197 of them. Its totals are the board's own counts.
+  function placeLegend() {
+    var legend = el('legend');
+    if (!legend) return;
+    legend.innerHTML =
+      '<span class="legend-k">Legend</span>' +
+      '<span><b class="verdict FARM">FARM</b> profit at least twice the plan\u2019s cost</span>' +
+      '<span><b class="verdict MARGINAL">MARGINAL</b> profit positive but below the cost</span>' +
+      '<span><b class="verdict SKIP">SKIP</b> profit zero or negative</span>' +
+      '<span><span class="bar legend-bar"><b style="left:22%;width:48%"></b><s style="left:58%"></s></span> the bar: the band\u2019s plausible rank, the line is this row\u2019s</span>' +
+      '<span>Profit and break-even drop are per plan; the base assumes <b>' + (D.assumptions.banked_share * 100).toFixed(3) +
+      '%</b> of the implied value banked. The plan\u2019s own cost is in the detail view.</span>' +
+      '<span class="legend-total" id="legend-total"></span>';
+  }
+
   function describe(n) {
     var parts = [];
     if (state.region !== 'all') parts.push(state.region === 'watchlist' ? 'on the watchlist' : 'off the watchlist');
@@ -215,6 +231,23 @@
     if (state.q) parts.push('matching \u201c' + esc(state.q) + '\u201d');
     if (parts.length === 0) return 'Every ranked protocol. Click a row for its arithmetic, its band and its plan.';
     return '<b>' + n + ' rows</b> ' + parts.join(', ') + '. Click a row for its arithmetic, its band and its plan.';
+  }
+
+  // What the verdicts come to at each assumption in the basis, so a detail view can quote the swing.
+  var VC = null;
+  function verdictCounts() {
+    if (VC) return VC;
+    VC = {};
+    D.assumptions.basis.forEach(function (b) {
+      var c = { FARM: 0, MARGINAL: 0, SKIP: 0 };
+      D.rows.forEach(function (r) {
+        var profit = r.implied_value_usd * b.banked - r.plan_cost_usd;
+        var v = profit >= r.plan_cost_usd ? 'FARM' : profit > 0 ? 'MARGINAL' : 'SKIP';
+        c[v]++;
+      });
+      VC[b.key] = c.FARM + ' FARM, ' + c.MARGINAL + ' MARGINAL, ' + c.SKIP + ' SKIP';
+    });
+    return VC;
   }
 
   // ---------------------------------------------------------------- detail drawer
@@ -258,20 +291,20 @@
       '<h4>What the plan assumes</h4>' +
       '<p class="prose small">' + esc(D.assumptions.note) + '</p>' +
       '<div class="kv">' +
-        '<span class="k">verdict</span><span><b class="verdict ' + r.verdict + '">' + r.verdict + '</b></span>' +
-        '<span class="k">plan cost</span><span>$' + exact(r.plan_cost_usd) + ' in all, the deposit plus gas</span>' +
-        '<span class="k">expected to you</span><span>$' + exact(Math.round(r.expected_usd)) + ' at the base case: implied value \u00d7 ' + D.assumptions.hold_share_of_implied * 100 + '% \u00d7 ' + (1 - D.assumptions.drop_pct / 100) + ' \u00d7 momentum ' + A.momentum + ' \u00d7 maturity ' + A.maturity + ' \u00d7 evidence ' + A.evidence + '</span>' +
-        '<span class="k">break-even drop</span><span><b>' + r.breakeven_drop_pct.toFixed(1) + '%</b>: the launch can fall this far before the plan stops paying for itself</span>' +
-        '<span class="k">break-even value</span><span>$' + exact(r.breakeven_usd) + ' of token market cap is the floor at which $' + exact(r.plan_cost_usd) + ' comes back</span>' +
-        '<span class="k">at a $1,000 position</span><span>positive at any drop below <b>' + r.threshold.drop_max_1000.toFixed(2) + '%</b>: the token keeps ' + (r.threshold.keep_floor_1000 * 100).toFixed(3) + '% of the implied value and $1,000 comes back</span>' +
-        '<span class="k">sensitivity</span><span>the implied value would have to move <b>' + (r.threshold.sensitivity * 100).toFixed(1) + '%</b> for the verdict to flip \u2014 ' + (r.threshold.robust ? 'it never flips while the model over-predicts, since the break-even value sits far below the implication' : 'it flips if the model over-predicts by that much') + '</span>' +
+        '<span class="k">verdict</span><span><b class="verdict ' + r.verdict + '">' + r.verdict + '</b> \u2014 ' + esc(D.assumptions.verdict_rule[r.verdict.toLowerCase()]) + '</span>' +
+        '<span class="k">plan cost</span><span>$' + exact(r.plan_cost_usd) + ' in all: the deposit plus gas, fixed by the plan</span>' +
+        '<span class="k">banked value</span><span>$' + exact(r.money.banked_usd) + ' = $' + exact(r.implied_value_usd) + ' implied \u00d7 ' + (D.assumptions.banked_share * 100).toFixed(3) + '% banked (no momentum, age or TVL term: those widen the band, never the money)</span>' +
+        '<span class="k">expected profit</span><span><b>$' + exact(Math.round(r.money.profit_usd)) + '</b> = $' + exact(r.money.banked_usd) + ' banked \u2212 $' + exact(r.plan_cost_usd) + ' cost' + (r.money.profit_usd < 0 ? ' \u2014 negative: the plan costs more than the allocation is worth' : '') + '</span>' +
+        '<span class="k">break-even drop</span><span><b>' + r.money.breakeven_drop_pct.toFixed(1) + '%</b>: the token may fall this far from the implied value before the plan stops paying for itself</span>' +
+        '<span class="k">break-even value</span><span>$' + exact(r.money.breakeven_usd) + ' of market cap is the floor at which $' + exact(r.plan_cost_usd) + ' comes back</span>' +
+        '<span class="k">at a $1,000 position</span><span>the same plan scaled up pays until the token falls <b>' + r.money.drop_max_1000.toFixed(1) + '%</b>, four times sooner, because the cost grows and the allocation does not</span>' +
       '</div>' +
       '<h4>Why the verdict is a threshold, not a slide</h4>' +
-      '<p class="prose small">The plan costs $' + exact(r.plan_cost_usd) + ' and the farm returns ' + D.assumptions.hold_share_of_implied * 100 + '% of the implied value, so it pays ' +
-        'while the token keeps at least ' + (r.threshold.keep_floor * 100).toFixed(4) + '% of ' + compact(r.implied_value_usd) + ' \u2014 any drop below ' + r.threshold.drop_max.toFixed(2) + '%. ' +
-        'At a flat $1,000 position the same threshold is ' + r.threshold.drop_max_1000.toFixed(2) + '. ' +
-        'Nothing a reader drags moves the verdict: the cost is fixed by the plan, and the only input that could move it is a model over-prediction of ' + (r.threshold.sensitivity * 100).toFixed(1) + '% or worse. ' +
-        'The inputs behind the ranking: ' + esc(r.booster) + '.</p>' +
+      '<p class="prose small">The farm pays while the token keeps more than ' + (r.money.keep_floor * 100).toFixed(2) + '% of ' + compact(r.implied_value_usd) + ' \u2014 any fall of less than ' + r.money.breakeven_drop_pct.toFixed(1) + '%. ' +
+        'Nothing a reader drags moves that line: the cost is set by the plan and the banked share is one stated assumption. ' +
+        'What does move it is the assumption itself: at five times less banked the verdicts run ' + verdictCounts().lean + ', at the base ' + verdictCounts().base + ', at twice as much ' + verdictCounts().kind + '. ' +
+        'This row reads <b>' + r.verdict + '</b> at the base and <b>' + r.verdict_if_kind + '</b> at twice the share.</p>' +
+      '<p class="prose small">The confidence terms behind the band, and only the band: ' + esc(r.booster) + '.</p>' +
       '</div><div>' +
       '<h4>The farm plan, step by step</h4>' +
       '<ol class="steps">' + plan + '</ol>' +
@@ -294,12 +327,14 @@
     'the implied value of a protocol that records no token is the fitted line evaluated at its TVL. ' +
     'The line is an estimate, so it comes with the residue it left on the rows that taught it, and with the error it made on rows it did not see.');
 
-  var th = D.rows[0].threshold;
+  var A0 = D.assumptions;
   html('model-lede', el('model-lede').innerHTML +
-    '<p>The verdict under each row is a stated threshold, not a slider. A plan costing $' + exact(D.rows[0].plan_cost_usd) + ' that returns ' +
-    D.assumptions.hold_share_of_implied * 100 + '% of the implied value turns positive the moment that value keeps more than ' +
-    (th.keep_floor * 100).toFixed(3) + '%; at the flattest position the board prices, $1,000, the line is ' + (th.keep_floor_1000 * 100).toFixed(3) +
-    '%. <b>Read the Drop at $1k column</b>: a row at 99.8% pays unless the launch falls more than 99.8% \u2014 so the honest question is never the verdict, it is whether the block is worth the token at all.</p>');
+    '<p><b>The money, in one sentence.</b> Expected profit = implied value \u00d7 ' + (A0.banked_share * 100).toFixed(3) +
+    '% banked \u2212 the plan\u2019s cost, where the banked share is ' + (A0.hold_share * 100) + '% of market cap handed to the whole farmer population \u00d7 the ' +
+    (A0.keep_share * 100) + '% the token keeps once liquid. Both numbers are assumptions, labelled as assumptions; nothing about momentum, age or TVL enters the payout. ' +
+    'It is small on purpose: at ' + (A0.banked_share * 100).toFixed(3) + '% of the implied value the verdict is decided entirely by whether a launch happens, and the board shows that on every row rather than dressing it up. ' +
+    'The verdict at that basis runs ' + verdictCounts().lean + ' if the share is five times smaller, ' + verdictCounts().base + ' at the base, and ' + verdictCounts().kind + ' at twice it \u2014 ' +
+    'a reader who thinks the share is the other number should read the verdict they would get, not this one.</p>');
 
   html('coef',
     '<div class="lbl">implied market cap =</div>' +
@@ -361,9 +396,10 @@
   html('verdict-work',
     '<span class="k">the first row, ' + esc(top.name) + ':</span>' +
     '<span class="step">plan cost <span class="v">$' + exact(top.plan_cost_usd) + '</span>, fixed by the plan</span>' +
-    '<span class="step">holding = implied value \u00d7 ' + D.assumptions.hold_share_of_implied * 100 + '% <span class="v">$' + exact(Math.round(top.implied_value_usd * D.assumptions.hold_share_of_implied)) + '</span></span>' +
-    '<span class="step">after a ' + D.assumptions.drop_pct + '% drop and the record\u2019s multipliers: <span class="v">$' + exact(Math.round(top.expected_usd)) + '</span></span>' +
-    '<span class="step">break-even <span class="v">$' + exact(top.breakeven_usd) + '</span> of token cap; break-even drop <span class="v">' + top.breakeven_drop_pct.toFixed(2) + '%</span></span>');
+    '<span class="step">banked = implied value \u00d7 ' + (D.assumptions.banked_share * 100).toFixed(3) + '% = <span class="v">$' + exact(top.money.banked_usd) + '</span></span>' +
+    '<span class="step">profit = $' + exact(top.money.banked_usd) + ' \u2212 $' + exact(top.plan_cost_usd) + ' = <span class="v">$' + exact(Math.round(top.money.profit_usd)) + '</span></span>' +
+    '<span class="step">break-even drop = 1 \u2212 $' + exact(top.plan_cost_usd) + ' / $' + exact(top.money.banked_usd) + ' = <span class="v">' + top.money.breakeven_drop_pct.toFixed(1) + '%</span></span>' +
+    '<span class="step">verdict <span class="v">' + top.verdict + '</span>, because ' + (top.money.profit_usd >= top.plan_cost_usd ? 'the profit clears twice the cost' : top.money.profit_usd > 0 ? 'the profit is positive but under the cost' : 'the profit is negative') + '</span>');
 
   // ---------------------------------------------------------------- live + excluded views
   html('live-lede',
@@ -430,5 +466,14 @@
     }).join(' \u00b7 ') + '.</div>');
 
   // The board is rendered last, once every panel has been filled, so the first paint is the whole page.
+  // The legend sets its own height, so it is moved under the visible rows: its totals then sit inside
+  // the first frame of the board, where a reader meets them before scrolling through 197 rows.
+  placeLegend();
   render();
+  html('legend-total',
+    '<b>' + D.rows.length + ' rows \u00b7 ' + D.rows.filter(function (r) { return r.verdict === 'FARM'; }).length + ' FARM, ' +
+    D.rows.filter(function (r) { return r.verdict === 'MARGINAL'; }).length + ' MARGINAL, ' +
+    D.rows.filter(function (r) { return r.verdict === 'SKIP'; }).length + ' SKIP</b> \u00b7 ' +
+    'the plans cost $' + exact(D.rows.reduce(function (s, r) { return s + r.plan_cost_usd; }, 0)) + ' in all \u00b7 break-even drop ' +
+    Math.min.apply(null, beAll) + '% to ' + Math.max.apply(null, beAll) + '%');
 })();
