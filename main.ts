@@ -1,3 +1,6 @@
+// Entrypoint: read the sealed snapshot, score it with lib/model.ts, and write board.json,
+// data.js, dashboard/, screenshots/ and dossier.json into out/ (MAKEFUN_OUTPUT_DIR outside
+// the grader's container). It writes nothing when the board breaks a gate rule.
 // A working token-radar-01 entry (Node 22, standard library only).
 //
 // The program reads the sealed snapshot from /input/snapshot.json (or --input <file|dir>), scores every

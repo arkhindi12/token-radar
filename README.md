@@ -37,7 +37,8 @@ toward the global median with k = 8, then clamped to 0.05 - 1.0. A category with
 live protocol takes the global median. No protocol name is ever special-cased, and
 the same function scores every row. The multiple is rounded to four decimals before
 scoring, so the dashboard's in-page recompute lands on the exact number board.json
-carries.
+carries. Farm plans are personalised per row: step 1 varies by chain, and steps 6 and 7
+name the protocol and its chain and TVL.
 
 ## Farm plans
 

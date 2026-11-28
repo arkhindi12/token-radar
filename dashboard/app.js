@@ -371,6 +371,8 @@
     );
   }
 
+  // The Live token tab: the 30 live-token protocols by market cap, shown with their market
+  // values as facts — no model, no implied value, no farm plan.
   function liveTable() {
     var tbody = el('tbody');
     DATA.live.forEach(function (r) {

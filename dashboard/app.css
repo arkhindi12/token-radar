@@ -130,6 +130,7 @@ tbody tr:last-child td { border-bottom: 0; }
   padding: var(--step-4); margin: var(--step-3) 0; overflow-x: auto; white-space: nowrap;
 }
 
+/* The per-protocol detail dialog: a centred panel with a dimmed backdrop, capped to the viewport. */
 .detail {
   width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 32px);
   background: var(--surface); color: var(--ink); border: 1px solid var(--border);

@@ -204,6 +204,9 @@ function median(values: number[]): number {
   return sorted[Math.floor(sorted.length / 2)]!;
 }
 
+// The comparable multiple, in one line: what the market already pays per dollar of TVL for
+// live tokens in the same category — the median mcap/TVL of the snapshot's own live protocols,
+// winsorised, shrunk toward the global median, then clamped. No outside price feed is involved.
 /**
  * The market's price per dollar of TVL, by category, from the snapshot's own live-token
  * protocols (CEX excluded): each live protocol's mcap_usd / tvl_usd, winsorised at the cap so

@@ -1,2 +1,3 @@
 # The program's output: the gate counts every file here as one the agent did not write.
+# Only the build output directory is ignored; no source file is ever excluded.
 out/
