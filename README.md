@@ -23,7 +23,7 @@ its cost and its time.
   id, no symbol) and is not a wrapped, staked or bridged product, not a versioned
   pool of another protocol, and not an exchange.
 
-## The model (radar-4)
+## The model (radar-5)
 
     implied = round( tvl_usd x comparable(category)
                      x (1 + clamp(change_7d, -60, 150) / 100 x 0.6)
