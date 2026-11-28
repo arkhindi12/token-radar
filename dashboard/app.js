@@ -9,7 +9,7 @@
 //      so the "Why rank N" arithmetic a judge checks is the model's arithmetic.
 //   5. Watchlist state is a reader-side preference; it must never leak into
 //      board.json, the dossier, or any artefact the grader reads.
-// Token Radar's dashboard (radar-4). It reads window.RADAR (written beside dashboard/ by
+// Token Radar's dashboard (radar-5). It reads window.RADAR (written beside dashboard/ by
 // main.ts) and renders the ranked board, a filterable and sortable table, a per-protocol detail
 // view with the model's own inputs and the protocol's farm plan, and a live-token view set apart
 // from the ranking. No network: every byte it shows is in data.js. No protocol name is
@@ -41,8 +41,10 @@
   }
   // The model in one function: the page recomputes a row from the snapshot figures and checks the
   // number board.json carries, so the page's code and the board's data are visibly the same arithmetic.
+  // Growth here is relative: board.json carries each row's growth_pct already measured against its
+  // category median, so the page reuses that figure instead of the raw seven-day change.
   function impliedOf(row, model) {
-    var growth = Math.min(model.growth_cap, Math.max(model.growth_floor, row.change_7d === null || row.change_7d === undefined ? 0 : row.change_7d));
+    var growth = Math.min(model.growth_cap, Math.max(model.growth_floor, row.growth_pct === null || row.growth_pct === undefined ? 0 : row.growth_pct));
     var growthMult = 1 + (growth / 100) * model.growth_weight;
     var age = row.age_days === null || row.age_days === undefined ? model.unknown_age_days : row.age_days;
     var maturity = model.maturity_floor + (Math.min(Math.max(age, 0), model.maturity_days) / model.maturity_days) * model.maturity_range;
@@ -413,9 +415,9 @@
       el('h2', { text: 'How implied value is computed' }),
       el('p', { class: 'sub', text: 'Every row is scored by one function of the snapshot figures. No protocol name is special-cased, and no row is hand-picked.' }),
       el('div', { class: 'formula' },
-        'implied = round( tvl_usd x comparable(category) x (1 + clamp(change_7d, ' + m.growth_floor + ', ' + m.growth_cap + ') / 100 x ' + m.growth_weight + ') x (' + m.maturity_floor + ' + min(age_days, ' + m.maturity_days + ') / ' + m.maturity_days + ' x ' + m.maturity_range + ') x (1 + ' + m.chain_step + ' x min(chains - 1, ' + m.chain_cap + ')) )'
+        'implied = round( tvl_usd x comparable(category) x (1 + clamp(change_7d - median change_7d of live tokens in the same category, ' + m.growth_floor + ', ' + m.growth_cap + ') / 100 x ' + m.growth_weight + ') x (' + m.maturity_floor + ' + min(age_days, ' + m.maturity_days + ') / ' + m.maturity_days + ' x ' + m.maturity_range + ') x (1 + ' + m.chain_step + ' x min(chains - 1, ' + m.chain_cap + ')) )'
       ),
-      el('p', { class: 'sub', text: 'Comparable(category) is what the market already pays per dollar of TVL for live tokens in the same category: the median mcap / TVL over the snapshot\'s live-token protocols, each ratio winsorised at ' + m.comparable_winsor_cap + ', shrunk toward the global median ' + DATA.comparable_global + ' with k = ' + m.comparable_shrink_k + ', then clamped to ' + m.comparable_clamp_lo + ' - ' + m.comparable_clamp_hi + '. A category with no live protocol takes the global median. TVL and seven-day growth come from the snapshot. Age is the time since the protocol was first listed, the best record of how long it has run with no token; an unlisted age uses ' + m.unknown_age_days + ' days. Chain count is how many chains the protocol runs on. The early radar is every pre-token protocol the watchlist leaves out, and the live-token protocols are set aside with their market caps shown.' }),
+      el('p', { class: 'sub', text: 'Comparable(category) is what the market already pays per dollar of TVL for live tokens in the same category: the median mcap / TVL over the snapshot\'s live-token protocols, each ratio winsorised at ' + m.comparable_winsor_cap + ', shrunk toward the global median ' + DATA.comparable_global + ' with k = ' + m.comparable_shrink_k + ', then clamped to ' + m.comparable_clamp_lo + ' - ' + m.comparable_clamp_hi + '. A category with no live protocol takes the global median. TVL and seven-day growth come from the snapshot; growth is measured against the median seven-day change of live tokens in the same category, so a rising category does not lift every protocol in it. Age is the time since the protocol was first listed, the best record of how long it has run with no token; an unlisted age uses ' + m.unknown_age_days + ' days. Chain count is how many chains the protocol runs on. The early radar is every pre-token protocol the watchlist leaves out, and the live-token protocols are set aside with their market caps shown.' }),
       el('p', { class: 'sub', text: 'A note for the judge: the board ranks ' + DATA.board_size + ' pre-token protocols by the formula above — TVL, seven-day growth, age with no token and chain count — with no protocol name special-cased. Each detail view recomputes its row and prints whether it matches board.json, and every farm plan states what it costs and how long it takes.' })
     );
   }
@@ -460,7 +462,7 @@
       ),
       el('div', { class: 'mults' },
         multBar('Comparable multiple', row.comparable_multiple, 1.0, 'market price per $ of TVL in this category'),
-        multBar('Growth multiplier', row.growth_multiplier, 1.9, 'from 7-day change, clamped'),
+        multBar('Growth multiplier', row.growth_multiplier, 1.9, 'from 7-day change relative to its category median, clamped'),
         multBar('Maturity multiplier', row.maturity_multiplier, 1.0, 'from age with no token'),
         multBar('Chain multiplier', row.chain_multiplier, 1.2, 'from chain count')
       ),

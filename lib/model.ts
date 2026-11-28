@@ -28,7 +28,9 @@
 //                to [COMPARABLE_CLAMP_LO, COMPARABLE_CLAMP_HI]; a category with no live protocol
 //                takes the global median. No protocol name is ever special-cased.
 //   base        = tvl_usd x comparable
-//   growth      = clamp(change_7d, -60, 150) per cent
+//   growth      = clamp(change_7d - median change_7d of live-token protocols in the same
+//                 category, -60, 150) per cent — momentum relative to the category median,
+//                 so a rising category does not lift every protocol in it
 //   growthMult  = 1 + (growth / 100) x GROWTH_WEIGHT
 //   maturity    = 0.6 + min(age_days, 1095) / 1095 x 0.4   (age_days unknown: 365)
 //   chainMult   = 1 + 0.04 x min(chains - 1, 5)            (more chains, wider reach)
@@ -97,7 +99,7 @@ export const MODEL: ModelConstants = {
 };
 
 /** The model's version label: the dashboard names it and the rules quote it. */
-export const MODEL_VERSION = 'radar-4';
+export const MODEL_VERSION = 'radar-5';
 
 /** How many live-token protocols the Live token view carries, by market cap. */
 export const LIVE_ROWS = 30;
@@ -151,6 +153,7 @@ export interface RadarRow {
   age_days: number | null;
   implied_value_usd: number;
   comparable_multiple: number;
+  growth_pct: number;
   growth_multiplier: number;
   maturity_multiplier: number;
   chain_multiplier: number;
@@ -194,11 +197,6 @@ export class SnapshotError extends Error {
 }
 
 const DAY_MS = 86_400_000;
-
-/** A finite number, else `fallback`. */
-function finite(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-}
 
 /** A whole day count from `from` to `to`, clamped at zero; null when either date is absent or bad. */
 export function ageDays(asOf: string, listedAt: string | null): number | null {
@@ -244,11 +242,39 @@ export function categoryMultiples(snapshot: Snapshot, model: ModelConstants): { 
   return { global, byCategory };
 }
 
-/** The four multipliers and the implied value one protocol gets under `model`. */
-export function impliedValue(protocol: SnapshotProtocol, asOf: string, model: ModelConstants, comparable: number): { implied: number; growthPct: number; growthMult: number; maturityMult: number; chainMult: number; age: number | null } {
+// The median seven-day change of the snapshot's own live-token protocols, by category —
+// the peer set is exactly the one categoryMultiples uses (live token, TVL above zero, CEX
+// excluded, and a change_7d on record), so one peer definition serves the whole model.
+// A category with no live protocol carrying a change_7d takes the global median.
+/**
+ * The category median of change_7d over live-token protocols, for relative momentum: how
+ * fast the category itself moved this week, so a protocol is scored on beating its peers
+ * rather than on riding its category. Categories are grouped the same way as for the
+ * comparable (a null category is one group), and the median helper is the shared one.
+ */
+export function categoryGrowthMedians(snapshot: Snapshot): { global: number; byCategory: Map<string, number> } {
+  const live = snapshot.protocols.filter((p) => p.mcap_usd !== null && p.tvl_usd > 0 && p.category !== 'CEX' && p.change_7d !== null);
+  const global = median(live.map((p) => p.change_7d!));
+  const grouped = new Map<string, number[]>();
+  for (const p of live) {
+    const key = p.category ?? 'null';
+    const list = grouped.get(key) ?? [];
+    list.push(p.change_7d!);
+    grouped.set(key, list);
+  }
+  const byCategory = new Map<string, number>();
+  for (const [key, changes] of grouped) byCategory.set(key, median(changes));
+  return { global, byCategory };
+}
+
+/** The four multipliers and the implied value one protocol gets under `model`. Growth is
+ * relative: the protocol's own seven-day change minus the median change of live-token
+ * protocols in its category, so category-wide moves do not count as protocol momentum.
+ * A protocol with no change_7d on record scores neutral growth, as before. */
+export function impliedValue(protocol: SnapshotProtocol, asOf: string, model: ModelConstants, comparable: number, categoryGrowthMedian: number): { implied: number; growthPct: number; growthMult: number; maturityMult: number; chainMult: number; age: number | null } {
   const age = ageDays(asOf, protocol.listed_at);
-  const rawGrowth = finite(protocol.change_7d, 0);
-  const growthPct = Math.min(model.growth_cap, Math.max(model.growth_floor, rawGrowth));
+  const relGrowth = protocol.change_7d === null ? 0 : protocol.change_7d - categoryGrowthMedian;
+  const growthPct = Math.min(model.growth_cap, Math.max(model.growth_floor, relGrowth));
   const growthMult = 1 + (growthPct / 100) * model.growth_weight;
   const ageForModel = age ?? model.unknown_age_days;
   const maturityMult = model.maturity_floor + (Math.min(Math.max(ageForModel, 0), model.maturity_days) / model.maturity_days) * model.maturity_range;
@@ -309,6 +335,7 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): B
   const index = bySlug(snapshot.protocols);
   const watchlist = new Set(snapshot.watchlist);
   const multiples = categoryMultiples(snapshot, model);
+  const growthMedians = categoryGrowthMedians(snapshot);
   // Every strict pre-token candidate in the snapshot, watchlist or not: the floor is never the
   // ceiling, and a protocol the watchlist leaves out is no worse a subject for the radar.
   const chosen = snapshot.protocols.filter((p) => isRankable(p));
@@ -323,7 +350,8 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): B
     // The multiple the board states is the multiple the board uses: rounded to four decimals
     // here, so the dashboard's recompute from data.js lands on the same implied value.
     const comparable = round4(multiples.byCategory.get(p.category ?? 'null') ?? multiples.global);
-    const { implied, growthPct, growthMult, maturityMult, chainMult, age } = impliedValue(p, snapshot.as_of, model, comparable);
+    const categoryMedian = growthMedians.byCategory.get(p.category ?? 'null') ?? growthMedians.global;
+    const { implied, growthPct, growthMult, maturityMult, chainMult, age } = impliedValue(p, snapshot.as_of, model, comparable, categoryMedian);
     return { p, implied, growthPct, growthMult, maturityMult, chainMult, age, comparable };
   });
   scored.sort((a, b) => b.implied - a.implied || (a.p.slug < b.p.slug ? -1 : a.p.slug > b.p.slug ? 1 : 0));
@@ -552,6 +580,7 @@ export function radarRow(row: BoardRow): RadarRow {
     age_days: row.age_days,
     implied_value_usd: row.implied_value_usd,
     comparable_multiple: row.model.comparable_multiple,
+    growth_pct: row.model.growth_pct,
     growth_multiplier: row.model.growth_multiplier,
     maturity_multiplier: row.model.maturity_multiplier,
     chain_multiplier: row.model.chain_multiplier,
