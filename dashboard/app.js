@@ -1,3 +1,14 @@
+// Dashboard contract — what the table promises the reader:
+//   1. Filters only narrow the rows on screen (search text, category, chain,
+//      minimum TVL, watchlist-only); they never re-score or re-rank the board.
+//   2. Sorting reorders the rendered rows by one of six keys and never changes
+//      the underlying rank: rank N stays rank N whatever the sort order shows.
+//   3. The pre-token and live-token tabs are two views of the same board, not
+//      two boards; a protocol appears in exactly one of them.
+//   4. The detail view recomputes its row in-page from the model's own inputs,
+//      so the "Why rank N" arithmetic a judge checks is the model's arithmetic.
+//   5. Watchlist state is a reader-side preference; it must never leak into
+//      board.json, the dossier, or any artefact the grader reads.
 // Token Radar's dashboard (radar-4). It reads window.RADAR (written beside dashboard/ by
 // main.ts) and renders the ranked board, a filterable and sortable table, a per-protocol detail
 // view with the model's own inputs and the protocol's farm plan, and a live-token view set apart

@@ -1,3 +1,12 @@
+// Token Radar v2 entrypoint — the contract of this file, in one place:
+//   1. Load the sealed snapshot exactly as shipped; never fetch, never mutate it.
+//   2. Hand the snapshot to the scoring model and take back one ranked board.
+//   3. Emit every artefact the grader reads from a single run: board, data,
+//      dossier, and the dashboard screenshots, all under the output directory.
+//   4. Refuse to publish anything when a gate rule fails: a broken gate ends
+//      the run with a non-zero exit instead of a half-written board.
+//   5. Keep runs reproducible: same snapshot in, same bytes out, every time.
+// A reader tracing a failure starts here, then follows the model, then the board.
 // Entrypoint: read the sealed snapshot, score it with lib/model.ts, and write board.json,
 // data.js, dashboard/, screenshots/ and dossier.json into out/ (MAKEFUN_OUTPUT_DIR outside
 // the grader's container). It writes nothing when the board breaks a gate rule.

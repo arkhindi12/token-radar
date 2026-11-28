@@ -1,3 +1,14 @@
+// Comparable multiple — how a protocol's value is priced against its peers:
+//   1. Take the live-token median mcap/TVL inside the protocol's own category;
+//      a category with no live protocol falls back to the global median.
+//   2. Winsorise the raw multiple at 3.0 so one outlier cannot set the price.
+//   3. Shrink the category median toward the global median (0.1857) with k=8,
+//      so thin categories borrow strength from the whole universe instead of
+//      trusting a handful of noisy peers.
+//   4. Clamp the result to [0.05, 1.0] and round it to 4dp BEFORE scoring, so
+//      the number the dashboard recomputes in-page is the number the model used.
+// The multiple is a peer-relative price, not a judgement: the same TVL in a
+// richly priced category is worth more than in a cheaply priced one, by design.
 // The token radar's model, v4 (radar-4): one snapshot of the protocol universe in, one ranked
 // board out.
 //
