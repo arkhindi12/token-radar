@@ -15,15 +15,15 @@ its cost and its time.
 - 198 pre-token rows, strongest implied value first: the 40 watchlist protocols
   plus 158 early finds the watchlist leaves out. The watchlist is the floor,
   never the ceiling.
-- Top of the board: 1 Steakhouse Financial $1,290,376,808; 2 Sentora
-  $1,162,243,412; 3 Gauntlet $774,453,923.
+- Top of the board: 1 Steakhouse Financial $1,377,552,256; 2 Sentora
+  $1,238,643,887; 3 Gauntlet $824,394,504.
 - 30 live-token protocols are set apart in their own view with their market caps
   shown: they already trade, so their value is a fact, not a model.
 - A protocol is rankable when it records no token (no market cap, no CoinGecko
   id, no symbol) and is not a wrapped, staked or bridged product, not a versioned
   pool of another protocol, and not an exchange.
 
-## The model (radar-5)
+## The model (radar-6)
 
     implied = round( tvl_usd x comparable(category)
                      x (1 + clamp(change_7d, -60, 150) / 100 x 0.6)

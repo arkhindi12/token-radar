@@ -99,7 +99,7 @@ export const MODEL: ModelConstants = {
 };
 
 /** The model's version label: the dashboard names it and the rules quote it. */
-export const MODEL_VERSION = 'radar-5';
+export const MODEL_VERSION = 'radar-6';
 
 /** How many live-token protocols the Live token view carries, by market cap. */
 export const LIVE_ROWS = 30;
@@ -379,7 +379,7 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): B
       chain_multiplier: round4(s.chainMult),
       age_days: s.age,
     },
-    farm_steps: farmSteps(s.p, s.age).map(stepText),
+    farm_steps: farmSteps(s.p, s.age, s.growthPct, s.implied).map(stepText),
   }));
 }
 
@@ -497,11 +497,45 @@ function holdText(age: number | null, hold: number): string {
   return `Hold the position for at least ${hold} days: the launch has been waited for this long, so a month of steady activity is the minimum that reads as a real user.`;
 }
 
+/** Which relative-growth band a row sits in: its growth_pct against the category median, never the raw seven-day change. The band only steers the words of steps 3 and 5 — urgency and check cadence — and never touches a model number. */
+export type GrowthBand = 'kuat' | 'positif' | 'datar' | 'lemah';
+
+export function growthBand(growthPct: number): GrowthBand {
+  if (growthPct >= 50) return 'kuat';
+  if (growthPct >= 10) return 'positif';
+  if (growthPct >= -10) return 'datar';
+  return 'lemah';
+}
+
+/** A relative growth figure as a signed whole percent, the way the farm plan prints it. */
+function fmtGrowthPct(growthPct: number): string {
+  const whole = Math.round(growthPct);
+  return `${whole > 0 ? '+' : ''}${whole}%`;
+}
+
+/** How fast to move on the core execution, by band: strong momentum goes in at once, weak momentum goes in small and slow. */
+function urgencyFor(band: GrowthBand): string {
+  if (band === 'kuat') return 'move within 24 hours and put the full position in at once';
+  if (band === 'positif') return 'move within 3 days';
+  if (band === 'datar') return 'move in stages over 1 week, half of the capital first';
+  return 'move in stages over 2 weeks, starting with 25% of the capital';
+}
+
+/** How often to check a held position, in days, by band. */
+function checkEveryDays(band: GrowthBand): number {
+  if (band === 'kuat') return 3;
+  if (band === 'datar') return 14;
+  return 7;
+}
+
 /**
  * A protocol's farm plan: seven steps, each an action with a cost and a time. The plan is derived
  * from the protocol's own record (category, chains, TVL, age), never from a hand-written list of names.
+ * Radar-6: steps 2, 3 and 5 are specific to the row — its own TVL, its own implied value and relative
+ * growth, and the urgency and check cadence its growth band calls for — while steps 1, 4, 6 and 7
+ * keep their radar-5 wording character for character.
  */
-export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
+export function farmSteps(p: SnapshotProtocol, age: number | null, growthPct: number, implied: number): FarmStep[] {
   const chain = chainOf(p);
   const capital = capitalFor(p);
   const hold = holdDaysFor(age);
@@ -509,6 +543,7 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
   const action = actionFor(p, capital, chain);
   const second = secondActionFor(p, capital, chain);
   const weekly = weeklyActionFor(p, capital, chain);
+  const band = growthBand(growthPct);
   return [
     {
       text: `Use a fresh wallet on ${chain} that holds only the funds you plan to farm, and keep its seed phrase offline.`,
@@ -516,12 +551,12 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
       time: '5 minutes',
     },
     {
-      text: action,
+      text: `${action} That entry is sized to ${p.name}'s ${tvlShort(p.tvl_usd)} of TVL, so the $${capital} stays small against the pool it joins, with about $${gas.setup} of gas to open it on ${chain}.`,
       cost: `$${capital} of capital and about $${gas.setup} of gas`,
       time: '15 minutes to set up',
     },
     {
-      text: second,
+      text: `${second} The model puts ${p.name} at ${tvlShort(implied)} of implied value, ${fmtGrowthPct(growthPct)} against its category median, so ${urgencyFor(band)}.`,
       cost: `about $${gas.small} of gas`,
       time: '10 minutes',
     },
@@ -531,7 +566,7 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
       time: '10 minutes a week',
     },
     {
-      text: holdText(age, hold),
+      text: `${holdText(age, hold)} Check the position in ${p.name} every ${checkEveryDays(band)} days, and re-evaluate or exit if TVL falls more than 20% below the ${tvlShort(p.tvl_usd)} snapshot — that is the line where the thesis no longer holds.`,
       cost: `the $${capital} stays in the position`,
       time: `${hold} days`,
     },

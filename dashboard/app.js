@@ -9,7 +9,7 @@
 //      so the "Why rank N" arithmetic a judge checks is the model's arithmetic.
 //   5. Watchlist state is a reader-side preference; it must never leak into
 //      board.json, the dossier, or any artefact the grader reads.
-// Token Radar's dashboard (radar-5). It reads window.RADAR (written beside dashboard/ by
+// Token Radar's dashboard (radar-6). It reads window.RADAR (written beside dashboard/ by
 // main.ts) and renders the ranked board, a filterable and sortable table, a per-protocol detail
 // view with the model's own inputs and the protocol's farm plan, and a live-token view set apart
 // from the ranking. No network: every byte it shows is in data.js. No protocol name is
@@ -74,7 +74,30 @@
   }
 
   // The farm plan is the same derivation main.ts writes to board.json: category, chains, TVL and
-  // age decide the actions, the capital, the hold and every cost and time. No name is special-cased.
+  // age decide the actions, the capital, the hold and every cost and time, and radar-6 makes
+  // steps 2, 3 and 5 specific to the row — its own TVL, implied value and relative growth, with
+  // the urgency and check cadence its growth band calls for. No name is special-cased.
+  function growthBand(growthPct) {
+    if (growthPct >= 50) return 'kuat';
+    if (growthPct >= 10) return 'positif';
+    if (growthPct >= -10) return 'datar';
+    return 'lemah';
+  }
+  function fmtGrowthPct(growthPct) {
+    var whole = Math.round(growthPct);
+    return (whole > 0 ? '+' : '') + whole + '%';
+  }
+  function urgencyFor(band) {
+    if (band === 'kuat') return 'move within 24 hours and put the full position in at once';
+    if (band === 'positif') return 'move within 3 days';
+    if (band === 'datar') return 'move in stages over 1 week, half of the capital first';
+    return 'move in stages over 2 weeks, starting with 25% of the capital';
+  }
+  function checkEveryDays(band) {
+    if (band === 'kuat') return 3;
+    if (band === 'datar') return 14;
+    return 7;
+  }
   function chainOf(p) { return p.chains && p.chains.length > 0 ? p.chains[0] : 'its main chain'; }
   function capitalFor(p) {
     if (p.tvl_usd >= 5e9) return 250;
@@ -157,12 +180,15 @@
     var capital = capitalFor(p);
     var hold = holdDaysFor(p.age_days);
     var gas = gasFor(chain);
+    var band = growthBand(p.growth_pct === null || p.growth_pct === undefined ? 0 : p.growth_pct);
+    var action = actionFor(p, capital, chain);
+    var second = secondActionFor(p, capital, chain);
     return [
       { text: 'Use a fresh wallet on ' + chain + ' that holds only the funds you plan to farm, and keep its seed phrase offline.', cost: gasSetupFor(chain), time: '5 minutes' },
-      { text: actionFor(p, capital, chain), cost: '$' + capital + ' of capital and about $' + gas.setup + ' of gas', time: '15 minutes to set up' },
-      { text: secondActionFor(p, capital, chain), cost: 'about $' + gas.small + ' of gas', time: '10 minutes' },
+      { text: action + ' That entry is sized to ' + p.name + "'s " + fmtUsd(p.tvl_usd) + ' of TVL, so the $' + capital + ' stays small against the pool it joins, with about $' + gas.setup + ' of gas to open it on ' + chain + '.', cost: '$' + capital + ' of capital and about $' + gas.setup + ' of gas', time: '15 minutes to set up' },
+      { text: second + ' The model puts ' + p.name + ' at ' + fmtUsd(p.implied_value_usd) + ' of implied value, ' + fmtGrowthPct(p.growth_pct === null || p.growth_pct === undefined ? 0 : p.growth_pct) + ' against its category median, so ' + urgencyFor(band) + '.', cost: 'about $' + gas.small + ' of gas', time: '10 minutes' },
       { text: weeklyActionFor(p, capital, chain), cost: 'about $' + gas.weekly + ' of gas a week', time: '10 minutes a week' },
-      { text: holdText(p.age_days, hold), cost: 'the $' + capital + ' stays in the position', time: hold + ' days' },
+      { text: holdText(p.age_days, hold) + ' Check the position in ' + p.name + ' every ' + checkEveryDays(band) + ' days, and re-evaluate or exit if TVL falls more than 20% below the ' + fmtUsd(p.tvl_usd) + ' snapshot — that is the line where the thesis no longer holds.', cost: 'the $' + capital + ' stays in the position', time: hold + ' days' },
       { text: "Before you withdraw, open " + p.name + "'s own points or rewards page on " + chain + " and claim only from the link it publishes. Never pay to claim, and never connect the wallet to a link from a message or a search ad.", cost: 'no fee to check, and never pay to claim', time: '10 minutes' },
       { text: 'Write the wallet, the dates and every transaction for ' + p.name + ' (' + fmtUsd(p.tvl_usd) + ') in a farm log so you can repeat the position or unwind it.', cost: 'nothing but the log', time: '5 minutes' }
     ].map(stepText);
